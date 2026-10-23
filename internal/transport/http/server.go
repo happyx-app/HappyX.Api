@@ -2,11 +2,13 @@
 package http
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -88,6 +90,15 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap lets http.ResponseController reach the connection, which the square's WebSocket needs.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+// Hijack hands the connection over to a WebSocket, which is logged as 101.
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	r.status = http.StatusSwitchingProtocols
+	return http.NewResponseController(r.ResponseWriter).Hijack()
 }
 
 func (s *Server) logRequests(next http.Handler) http.Handler {
