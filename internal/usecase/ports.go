@@ -48,5 +48,14 @@ type MoodRepository interface {
 	ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.MoodEntry, error)
 }
 
+type KudosRepository interface {
+	// Create stores kudos between two existing members of the guild and returns it with both
+	// usernames filled in.
+	Create(ctx context.Context, k domain.Kudos) (domain.Kudos, error)
+	CountGivenOn(ctx context.Context, guildID, giverID string, day time.Time) (int, error)
+	// ListBetween returns the guild's kudos in [from, to], oldest first.
+	ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.Kudos, error)
+}
+
 // Clock lets tests control "today".
 type Clock func() time.Time

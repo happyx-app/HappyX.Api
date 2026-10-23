@@ -46,6 +46,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}/mood", s.recordMood)
 	api.HandleFunc("GET /v1/guilds/{guildID}/report", s.report)
 	api.HandleFunc("POST /v1/guilds/{guildID}/dispatches", s.claimDispatch)
+	api.HandleFunc("POST /v1/guilds/{guildID}/kudos", s.giveKudos)
 	mux.Handle("/v1/", s.requireKey(api))
 	if s.web != nil {
 		s.webRoutes(mux)
@@ -131,6 +132,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, domain.ErrNotAMember):
 		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, domain.ErrTooMany):
+		writeError(w, http.StatusTooManyRequests, err.Error())
 	default:
 		s.log.Error("internal error", "method", r.Method, "path", r.URL.Path, "err", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

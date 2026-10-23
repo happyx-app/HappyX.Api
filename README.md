@@ -31,6 +31,9 @@ Discord user in two servers is two separate members with separate histories. See
 Guilds are anonymous by default: reports include messages but never who wrote them. An admin can
 turn this off with `PATCH /v1/guilds/{guildID}` `{"anonymous": false}`.
 
+Kudos are the exception: they are public thanks posted in the server with both names, so reports
+list them with names whatever the setting.
+
 ## Credentials
 
 All secrets come from environment variables; nothing is read from files in the repo.
@@ -87,16 +90,20 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/v1/guilds` | | active guilds (for the bot's scheduler) |
 | POST | `/v1/guilds` | `discord_guild_id`, `name`, `admin_discord_user_id` | register on join; idempotent, keeps settings |
 | GET | `/v1/guilds/{guildID}` | | |
-| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id` | |
+| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it) | |
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys, keeps data |
 | GET | `/v1/guilds/{guildID}/members` | | active members |
 | PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in |
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out |
 | PUT | `/v1/guilds/{guildID}/members/{userID}/mood` | `mood` (1-5), `message` (optional, ≤500), `day` (optional `YYYY-MM-DD`) | one answer per day; answering again replaces it |
 | GET | `/v1/guilds/{guildID}/report` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` | without a range: last complete week or month |
+| POST | `/v1/guilds/{guildID}/kudos` | `from_discord_user_id`, `to_discord_user_id`, `message` (1-300) | 201 with the kudos and both usernames. Both must be known members (paused is fine), not the same person; at most 10 per giver per day (429) |
 | POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent. Makes scheduled sends exactly-once across restarts |
 
-Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, or dispatch already claimed).
+Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, or dispatch already claimed), 429 (kudos limit).
+
+The report also has `kudos`: `count`, `givers`, `receivers` and up to five `highlights` (the
+latest, newest first, each with `day`, both IDs and usernames, `message` and `created_at`).
 
 ## Development
 

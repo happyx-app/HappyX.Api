@@ -13,14 +13,15 @@ type Service struct {
 	members    MemberRepository
 	moods      MoodRepository
 	dispatches DispatchRepository
+	kudos      KudosRepository
 	now        Clock
 }
 
-func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, now Clock) *Service {
+func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, now Clock) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{guilds: g, members: m, moods: mo, dispatches: d, now: now}
+	return &Service{guilds: g, members: m, moods: mo, dispatches: d, kudos: k, now: now}
 }
 
 // --- Guilds ---
@@ -62,6 +63,8 @@ type SettingsPatch struct {
 	SurveyHour      *int
 	ReportFrequency *domain.ReportFrequency
 	AdminDiscordID  *string
+	// KudosChannelID set to "" goes back to posting where the command is used.
+	KudosChannelID *string
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -84,6 +87,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.ReportFrequency != nil {
 		st.ReportFrequency = *p.ReportFrequency
+	}
+	if p.KudosChannelID != nil {
+		st.KudosChannelID = *p.KudosChannelID
 	}
 	if p.AdminDiscordID != nil {
 		g.AdminDiscordID = *p.AdminDiscordID
@@ -174,6 +180,51 @@ func (s *Service) RecordMood(ctx context.Context, in RecordMoodInput) (domain.Mo
 	return s.moods.Upsert(ctx, e)
 }
 
+// --- Kudos ---
+
+type GiveKudosInput struct {
+	GuildID    string
+	FromUserID string
+	ToUserID   string
+	Message    string
+}
+
+// GiveKudos records public thanks between two members of the guild. Both must be known
+// members, though not necessarily taking part in the survey: pausing the survey doesn't stop
+// anyone from giving or getting kudos.
+func (s *Service) GiveKudos(ctx context.Context, in GiveKudosInput) (domain.Kudos, error) {
+	g, err := s.activeGuild(ctx, in.GuildID)
+	if err != nil {
+		return domain.Kudos{}, err
+	}
+	k := domain.Kudos{
+		GuildDiscordID:    in.GuildID,
+		GiverDiscordID:    in.FromUserID,
+		ReceiverDiscordID: in.ToUserID,
+		Day:               s.today(g),
+		Message:           in.Message,
+	}
+	if err := k.Validate(); err != nil {
+		return domain.Kudos{}, err
+	}
+	for _, id := range []string{in.FromUserID, in.ToUserID} {
+		if _, err := s.members.Get(ctx, in.GuildID, id); err != nil {
+			if err == domain.ErrNotFound {
+				return domain.Kudos{}, domain.ErrNotAMember
+			}
+			return domain.Kudos{}, err
+		}
+	}
+	n, err := s.kudos.CountGivenOn(ctx, in.GuildID, in.FromUserID, k.Day)
+	if err != nil {
+		return domain.Kudos{}, err
+	}
+	if n >= domain.MaxKudosPerDay {
+		return domain.Kudos{}, domain.ErrTooMany
+	}
+	return s.kudos.Create(ctx, k)
+}
+
 // --- Dispatches ---
 
 // ClaimDispatch lets the bot reserve sending a survey or report for a period exactly once.
@@ -221,7 +272,13 @@ func (s *Service) Report(ctx context.Context, guildID string, from, to time.Time
 			usernames[m.DiscordID] = m.Username
 		}
 	}
-	return domain.BuildReport(g, from, to, entries, usernames), nil
+	kudos, err := s.kudos.ListBetween(ctx, guildID, from, to)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	r := domain.BuildReport(g, from, to, entries, usernames)
+	r.Kudos = domain.SummarizeKudos(kudos)
+	return r, nil
 }
 
 // --- Web dashboard ---

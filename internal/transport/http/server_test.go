@@ -31,10 +31,10 @@ func newTestServer(t *testing.T, opts ...func(*httpapi.Server)) *httptest.Server
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches, kudos RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool),
+	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool),
 		func() time.Time { return time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC) })
 	sum := sha256.Sum256([]byte(key))
 	api := httpapi.NewServer(svc, [][]byte{sum[:]}, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -108,5 +108,62 @@ func TestMoodFlow(t *testing.T) {
 	msgs := rep["messages"].([]any)
 	if m := msgs[0].(map[string]any); m["discord_user_id"] != nil || m["message"] != "bien" {
 		t.Fatalf("anonymous report should hide the author: %v", m)
+	}
+}
+
+func TestKudosFlow(t *testing.T) {
+	srv := newTestServer(t)
+	const g, ana, bea, eve = "100000000000000001", "200000000000000001", "200000000000000002", "200000000000000009"
+	kudos := func(from, to, msg string) string {
+		return `{"from_discord_user_id":"` + from + `","to_discord_user_id":"` + to + `","message":"` + msg + `"}`
+	}
+
+	steps := []struct {
+		method, path, body string
+		want               int
+	}{
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + g + `","name":"Test","admin_discord_user_id":"300000000000000001"}`, 200},
+		{"PUT", "/v1/guilds/" + g + "/members/" + ana, `{"username":"ana"}`, 200},
+		{"PUT", "/v1/guilds/" + g + "/members/" + bea, `{"username":"bea","active":false}`, 200},
+		{"POST", "/v1/guilds/" + g + "/kudos", kudos(ana, bea, "gracias por el cable"), 201},
+		{"POST", "/v1/guilds/" + g + "/kudos", kudos(ana, ana, "yo mismo"), 400},
+		{"POST", "/v1/guilds/" + g + "/kudos", kudos(ana, bea, ""), 400},
+		{"POST", "/v1/guilds/" + g + "/kudos", kudos(ana, eve, "no está"), 403},
+		{"PATCH", "/v1/guilds/" + g, `{"kudos_channel_id":"400000000000000001"}`, 200},
+		{"PATCH", "/v1/guilds/" + g, `{"kudos_channel_id":"general"}`, 400},
+	}
+	for _, s := range steps {
+		if code, body := do(t, srv, s.method, s.path, key, s.body); code != s.want {
+			t.Fatalf("%s %s: got %d (%v), want %d", s.method, s.path, code, body, s.want)
+		}
+	}
+	if _, gd := do(t, srv, "GET", "/v1/guilds/"+g, key, ""); gd["kudos_channel_id"] != "400000000000000001" {
+		t.Fatalf("kudos channel not saved: %v", gd)
+	}
+
+	// The daily limit counts the one already given.
+	for i := 1; i < 10; i++ {
+		if code, body := do(t, srv, "POST", "/v1/guilds/"+g+"/kudos", key, kudos(ana, bea, "otra")); code != 201 {
+			t.Fatalf("kudos %d: %d %v", i, code, body)
+		}
+	}
+	if code, _ := do(t, srv, "POST", "/v1/guilds/"+g+"/kudos", key, kudos(ana, bea, "una más")); code != 429 {
+		t.Fatalf("11th kudos of the day: got %d, want 429", code)
+	}
+
+	code, rep := do(t, srv, "GET", "/v1/guilds/"+g+"/report?from=2026-10-22&to=2026-10-22", key, "")
+	if code != 200 {
+		t.Fatalf("report: %d %v", code, rep)
+	}
+	k := rep["kudos"].(map[string]any)
+	if k["count"].(float64) != 10 || k["givers"].(float64) != 1 || k["receivers"].(float64) != 1 {
+		t.Fatalf("kudos summary: %v", k)
+	}
+	hl := k["highlights"].([]any)
+	if len(hl) != 5 {
+		t.Fatalf("want 5 highlights, got %d", len(hl))
+	}
+	if h := hl[0].(map[string]any); h["from_username"] != "ana" || h["to_username"] != "bea" || h["day"] != "2026-10-22" {
+		t.Fatalf("kudos keep their names even in anonymous guilds: %v", h)
 	}
 }

@@ -28,13 +28,13 @@ func testService(t *testing.T, now time.Time) *usecase.Service {
 	}
 	t.Cleanup(pool.Close)
 	reset(t, pool)
-	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool),
+	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool),
 		func() time.Time { return now })
 }
 
 func reset(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches, kudos RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -175,6 +175,53 @@ func TestGuildIsolation(t *testing.T) {
 	}
 	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildB, UserID: user1, Mood: domain.MoodGood}); err != nil {
 		t.Fatalf("user should still be a member of guild B: %v", err)
+	}
+}
+
+// TestKudosIsolation checks kudos stay in their guild and can't link members across guilds.
+func TestKudosIsolation(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	svc := testService(t, now)
+	mustRegister(t, svc, guildA)
+	mustRegister(t, svc, guildB)
+	mustJoin(t, svc, guildA, user1)
+	mustJoin(t, svc, guildA, user2)
+	mustJoin(t, svc, guildB, user1)
+
+	give := func(guild, from, to string) error {
+		_, err := svc.GiveKudos(ctx, usecase.GiveKudosInput{GuildID: guild, FromUserID: from, ToUserID: to, Message: "gracias " + guild})
+		return err
+	}
+	if err := give(guildA, user1, user2); err != nil {
+		t.Fatal(err)
+	}
+	// user2 is only in guild A.
+	if err := give(guildB, user1, user2); !errors.Is(err, domain.ErrNotAMember) {
+		t.Fatalf("cross-guild kudos: want ErrNotAMember, got %v", err)
+	}
+	// Pausing the survey doesn't stop anyone from getting kudos.
+	if err := svc.LeaveMember(ctx, guildA, user2); err != nil {
+		t.Fatal(err)
+	}
+	if err := give(guildA, user1, user2); err != nil {
+		t.Fatalf("kudos to a paused member: %v", err)
+	}
+
+	day := domain.TruncateDay(now)
+	ra, err := svc.Report(ctx, guildA, day, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rb, err := svc.Report(ctx, guildB, day, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ra.Kudos.Count != 2 || ra.Kudos.Highlights[0].ReceiverUsername != "user2" || ra.Kudos.Highlights[0].Message != "gracias "+guildA {
+		t.Fatalf("guild A kudos: %+v", ra.Kudos)
+	}
+	if rb.Kudos.Count != 0 {
+		t.Fatalf("guild B report shows another guild's kudos: %+v", rb.Kudos)
 	}
 }
 
