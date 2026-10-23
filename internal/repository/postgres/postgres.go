@@ -103,7 +103,19 @@ func (r *GuildRepo) Get(ctx context.Context, guildID string) (domain.Guild, erro
 }
 
 func (r *GuildRepo) ListActive(ctx context.Context) ([]domain.Guild, error) {
-	rows, err := r.db.Query(ctx, `SELECT `+guildCols+` FROM guilds WHERE active ORDER BY id`)
+	return r.list(ctx, `SELECT `+guildCols+` FROM guilds WHERE active ORDER BY id`)
+}
+
+func (r *GuildRepo) ListVisible(ctx context.Context, userID string, guildIDs []string) ([]domain.Guild, error) {
+	if guildIDs == nil {
+		guildIDs = []string{}
+	}
+	return r.list(ctx, `SELECT `+guildCols+` FROM guilds
+		WHERE admin_discord_id = $1 OR discord_id = ANY($2) ORDER BY name, id`, userID, guildIDs)
+}
+
+func (r *GuildRepo) list(ctx context.Context, sql string, args ...any) ([]domain.Guild, error) {
+	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

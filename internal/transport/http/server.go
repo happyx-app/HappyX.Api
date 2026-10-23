@@ -19,6 +19,7 @@ type Server struct {
 	svc       *usecase.Service
 	keyHashes [][]byte
 	log       *slog.Logger
+	web       *Web // nil when the dashboard is not configured
 }
 
 func NewServer(svc *usecase.Service, keyHashes [][]byte, log *slog.Logger) *Server {
@@ -46,6 +47,9 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/guilds/{guildID}/report", s.report)
 	api.HandleFunc("POST /v1/guilds/{guildID}/dispatches", s.claimDispatch)
 	mux.Handle("/v1/", s.requireKey(api))
+	if s.web != nil {
+		s.webRoutes(mux)
+	}
 
 	return s.logRequests(mux)
 }

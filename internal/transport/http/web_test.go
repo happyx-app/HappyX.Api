@@ -1,0 +1,167 @@
+package http_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/moixblau/HappyX.Api/internal/domain"
+	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
+)
+
+const (
+	guildA, guildB = "100000000000000001", "100000000000000002"
+	adminA, adminB = "300000000000000001", "300000000000000009"
+	managerB       = "300000000000000002"
+	memberID       = "200000000000000001"
+)
+
+// fakeDiscord logs in whoever the code names.
+type fakeDiscord struct{}
+
+func (fakeDiscord) AuthURL(state string) string {
+	return "https://discord.test/authorize?state=" + state
+}
+
+func (fakeDiscord) Viewer(_ context.Context, code string) (domain.Viewer, error) {
+	switch code {
+	case "adminA":
+		return domain.Viewer{DiscordID: adminA, Username: "Ana"}, nil
+	case "managerB":
+		return domain.Viewer{DiscordID: managerB, Username: "Bea", ManagedGuilds: []string{guildB, "100000000000000077"}}, nil
+	}
+	return domain.Viewer{}, errors.New("bad code")
+}
+
+func newWebClient(t *testing.T) *http.Client {
+	jar, _ := cookiejar.New(nil)
+	return &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+}
+
+func get(t *testing.T, c *http.Client, u string) (*http.Response, map[string]any) {
+	t.Helper()
+	res, err := c.Get(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res, out
+}
+
+func login(t *testing.T, srv *httptest.Server, c *http.Client, code string) {
+	t.Helper()
+	res, _ := get(t, c, srv.URL+"/web/auth/login")
+	loc, _ := url.Parse(res.Header.Get("Location"))
+	if res.StatusCode != http.StatusFound || loc.Host != "discord.test" {
+		t.Fatalf("login: %d %s", res.StatusCode, loc)
+	}
+	res, _ = get(t, c, srv.URL+"/web/auth/callback?code="+code+"&state="+loc.Query().Get("state"))
+	if res.StatusCode != http.StatusFound || res.Header.Get("Location") != "http://happyx.test/" {
+		t.Fatalf("callback: %d %s", res.StatusCode, res.Header.Get("Location"))
+	}
+}
+
+func guildIDs(me map[string]any) []string {
+	var ids []string
+	for _, g := range me["guilds"].([]any) {
+		ids = append(ids, g.(map[string]any)["discord_guild_id"].(string))
+	}
+	return ids
+}
+
+func TestWebDashboard(t *testing.T) {
+	srv := newTestServer(t, func(s *httpapi.Server) {
+		s.WithWeb(httpapi.Web{Identity: fakeDiscord{}, SessionKey: []byte("0123456789abcdef0123456789abcdef"), PublicURL: "http://happyx.test/"})
+	})
+	for _, s := range []struct{ method, path, body string }{
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + guildA + `","name":"A","admin_discord_user_id":"` + adminA + `"}`},
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + guildB + `","name":"B","admin_discord_user_id":"` + adminB + `"}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID, `{"username":"x"}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID + "/mood", `{"mood":5,"message":"genial"}`},
+		{"PUT", "/v1/guilds/" + guildB + "/members/" + memberID, `{"username":"x"}`},
+		{"PUT", "/v1/guilds/" + guildB + "/members/" + memberID + "/mood", `{"mood":2}`},
+	} {
+		if code, body := do(t, srv, s.method, s.path, key, s.body); code != 200 {
+			t.Fatalf("%s %s: %d %v", s.method, s.path, code, body)
+		}
+	}
+	report := "/report?from=2026-10-22&to=2026-10-22"
+
+	anon := newWebClient(t)
+	if res, _ := get(t, anon, srv.URL+"/web/me"); res.StatusCode != 401 {
+		t.Fatalf("me without a session: %d", res.StatusCode)
+	}
+	if res, _ := get(t, anon, srv.URL+"/web/guilds/"+guildA+report); res.StatusCode != 401 {
+		t.Fatalf("report without a session: %d", res.StatusCode)
+	}
+	// A callback whose state doesn't match the cookie is rejected (CSRF on login).
+	if res, _ := get(t, anon, srv.URL+"/web/auth/callback?code=adminA&state=forged"); !strings.HasSuffix(res.Header.Get("Location"), "login=failed") {
+		t.Fatalf("forged state: %s", res.Header.Get("Location"))
+	}
+	if res, _ := get(t, anon, srv.URL+"/web/me"); res.StatusCode != 401 {
+		t.Fatal("forged state logged the user in")
+	}
+	// The bot's API key does not open the dashboard routes, and a session doesn't open /v1.
+	if code, _ := do(t, srv, "GET", "/web/me", key, ""); code != 401 {
+		t.Fatalf("API key on /web: %d", code)
+	}
+
+	// The registered admin sees their guild only.
+	a := newWebClient(t)
+	login(t, srv, a, "adminA")
+	if _, me := get(t, a, srv.URL+"/web/me"); strings.Join(guildIDs(me), ",") != guildA {
+		t.Fatalf("admin A guilds: %v", me)
+	}
+	res, rep := get(t, a, srv.URL+"/web/guilds/"+guildA+report)
+	if res.StatusCode != 200 || rep["average"].(float64) != 5 {
+		t.Fatalf("admin A report: %d %v", res.StatusCode, rep)
+	}
+	if m := rep["messages"].([]any)[0].(map[string]any); m["discord_user_id"] != nil {
+		t.Fatalf("dashboard must keep reports anonymous: %v", m)
+	}
+	if res, _ := get(t, a, srv.URL+"/web/guilds/"+guildB+report); res.StatusCode != 404 {
+		t.Fatalf("admin A reading guild B: %d", res.StatusCode)
+	}
+	if res, _ := a.Get(srv.URL + "/v1/guilds"); res.StatusCode != 401 {
+		t.Fatalf("session on /v1: %d", res.StatusCode)
+	}
+
+	// A Discord administrator of B sees B (and not servers without HappyX).
+	b := newWebClient(t)
+	login(t, srv, b, "managerB")
+	if _, me := get(t, b, srv.URL+"/web/me"); strings.Join(guildIDs(me), ",") != guildB {
+		t.Fatalf("manager B guilds: %v", me)
+	}
+	if res, rep := get(t, b, srv.URL+"/web/guilds/"+guildB+report); res.StatusCode != 200 || rep["average"].(float64) != 2 {
+		t.Fatalf("manager B report: %d %v", res.StatusCode, rep)
+	}
+	if res, _ := get(t, b, srv.URL+"/web/guilds/"+guildA+report); res.StatusCode != 404 {
+		t.Fatalf("manager B reading guild A: %d", res.StatusCode)
+	}
+
+	// Logging out drops the session.
+	req, _ := http.NewRequest("POST", srv.URL+"/web/auth/logout", nil)
+	if res, err := b.Do(req); err != nil || res.StatusCode != 204 {
+		t.Fatalf("logout: %v %v", res, err)
+	}
+	if res, _ := get(t, b, srv.URL+"/web/me"); res.StatusCode != 401 {
+		t.Fatalf("me after logout: %d", res.StatusCode)
+	}
+}
+
+func TestWebDisabled(t *testing.T) {
+	srv := newTestServer(t)
+	if code, _ := do(t, srv, "GET", "/web/auth/login", "", ""); code != 404 {
+		t.Fatalf("dashboard routes should not exist without web config: %d", code)
+	}
+}

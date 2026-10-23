@@ -232,15 +232,18 @@ func (s *Server) recordMood(w http.ResponseWriter, r *http.Request) {
 // report returns aggregated data for ?from=YYYY-MM-DD&to=YYYY-MM-DD. Without a range it
 // returns the last complete period (week or month) according to the guild's settings.
 func (s *Server) report(w http.ResponseWriter, r *http.Request) {
-	guildID := r.PathValue("guildID")
+	g, err := s.svc.GetGuild(r.Context(), r.PathValue("guildID"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.writeReport(w, r, g)
+}
+
+func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Guild) {
 	q := r.URL.Query()
 	var from, to time.Time
 	if q.Get("from") == "" && q.Get("to") == "" {
-		g, err := s.svc.GetGuild(r.Context(), guildID)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
 		from, to = s.svc.LastPeriod(g)
 	} else {
 		var err1, err2 error
@@ -251,7 +254,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	rep, err := s.svc.Report(r.Context(), guildID, from, to)
+	rep, err := s.svc.Report(r.Context(), g.DiscordID, from, to)
 	if err != nil {
 		s.fail(w, r, err)
 		return

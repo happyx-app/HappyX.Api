@@ -224,6 +224,39 @@ func (s *Service) Report(ctx context.Context, guildID string, from, to time.Time
 	return domain.BuildReport(g, from, to, entries, usernames), nil
 }
 
+// --- Web dashboard ---
+
+// VisibleGuilds lists the guilds the viewer may see on the dashboard.
+func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]domain.Guild, error) {
+	if v.DiscordID == "" {
+		return nil, nil
+	}
+	gs, err := s.guilds.ListVisible(ctx, v.DiscordID, v.ManagedGuilds)
+	if err != nil {
+		return nil, err
+	}
+	out := gs[:0]
+	for _, g := range gs {
+		if v.CanView(g) {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
+// ViewerGuild returns the guild if the viewer may see it. Guilds they can't see are reported
+// as not found, so the dashboard doesn't reveal which servers use HappyX.
+func (s *Service) ViewerGuild(ctx context.Context, v domain.Viewer, guildID string) (domain.Guild, error) {
+	g, err := s.guilds.Get(ctx, guildID)
+	if err != nil {
+		return domain.Guild{}, err
+	}
+	if !v.CanView(g) {
+		return domain.Guild{}, domain.ErrNotFound
+	}
+	return g, nil
+}
+
 // LastPeriod returns the most recent complete week (Mon-Sun) or month before now,
 // in the guild's timezone.
 func (s *Service) LastPeriod(g domain.Guild) (from, to time.Time) {
