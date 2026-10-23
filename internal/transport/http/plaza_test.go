@@ -105,6 +105,11 @@ func TestPlaza(t *testing.T) {
 	if e := readUntil(t, a, "emote"); e["id"] != p2 || e["e"] != "wave" {
 		t.Fatalf("emote: %v", e)
 	}
+	// Only the server's admins start games.
+	_ = b.Write(ctx, websocket.MessageText, []byte(`{"t":"launch"}`))
+	if e := readUntil(t, b, "error"); e["code"] != "not_host" {
+		t.Fatalf("member launched a game: %v", e)
+	}
 	_ = b.Write(ctx, websocket.MessageText, []byte(`{"t":"move","dx":1,"dy":0}`))
 	if st := readUntil(t, a, "state"); len(st["p"].([]any)) != 2 {
 		t.Fatalf("state: %v", st)

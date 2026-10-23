@@ -13,6 +13,7 @@ cmd/api                      entry point (config, wiring, graceful shutdown)
 internal/domain              entities and rules (Guild, Member, MoodEntry, Report); no dependencies
 internal/usecase             application logic + repository interfaces (ports)
 internal/plaza               the servers' real-time squares (in memory, no I/O)
+internal/launch              «El gran lanzamiento», the office game played from a square
 internal/repository/postgres PostgreSQL adapters (pgx) and embedded migrations runner
 internal/transport/http      JSON REST handlers and API key middleware
 migrations                   SQL migrations, applied automatically on startup
@@ -135,6 +136,28 @@ The WebSocket only accepts the dashboard's own origin. Messages are JSON text fr
 | API | `high_five` | `a`, `b`: two avatars within 80 units both raised a hand within 3 s |
 
 Close codes: 4000 opened elsewhere, 4001 too slow, 1001 the API is shutting down.
+
+### El gran lanzamiento
+
+The office game, started by hand from the square by a server admin (the `host` flag on their
+player) with 3 to 10 people in it. One player is the manager: they sit in the boss's office, see
+everything and give orders but can't move. The others are workers: they walk the office on a
+grid, see only what is within 3.5 tiles and their own order, and pick up and deliver by walking
+next to the station and then the room's table. 3 rounds of 4 minutes, a new manager each round.
+`internal/launch` runs it inside the square's tick and filters what each player sees, so the
+browser never gets what its player shouldn't know. A player who drops out keeps their place for
+10 s. Nothing is stored yet.
+
+| From | Message | Fields |
+| --- | --- | --- |
+| web | `launch` / `stop` | host only |
+| web | `g_move` | `dx`, `dy`: keys held, one tile at a time |
+| web | `g_goto` | `x`, `y`: a tile; a station or table means the tile beside it |
+| web | `order` | `w`, `task`: the manager gives a task to a worker (`task` 0 takes it back) |
+| API | `game_start` | `map` (tiles, rooms, stations, tables, seat), `players` |
+| API | `game` | 20 a second, per player: `phase`, `round`, `left`, `manager`, `role`, the visible `players`, `tasks` (manager and spectators) or `order` with its arrow `target` (workers), `delivered`, `expired`, `ev` |
+| API | `game_end` | back to the square |
+| API | `error` | `code`: `not_host`, `player_count` or `already_playing` |
 
 ## API
 

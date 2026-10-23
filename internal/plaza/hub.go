@@ -5,6 +5,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/moixblau/HappyX.Api/internal/launch"
 )
 
 // TickRate is how many times per second the squares move and send positions.
@@ -28,6 +30,7 @@ type Hub struct {
 	squares map[string][]*square // by guild ID
 	tick    time.Duration
 	now     func() time.Time
+	games   launch.Config
 }
 
 type square struct {
@@ -35,6 +38,9 @@ type square struct {
 	room  *Room
 	conns map[string]*Conn
 	stop  chan struct{}
+	// game is the game being played from this square, if any. While it runs the square's
+	// avatars stand still and everyone gets the game's view instead.
+	game *launch.Game
 }
 
 // Conn is one player's connection to a square. Messages for them arrive on Out, already
@@ -43,13 +49,14 @@ type Conn struct {
 	hub    *Hub
 	sq     *square
 	id     string
+	host   bool
 	out    chan []byte
 	done   chan struct{}
 	reason string
 }
 
 func NewHub() *Hub {
-	return &Hub{squares: map[string][]*square{}, tick: time.Second / TickRate, now: time.Now}
+	return &Hub{squares: map[string][]*square{}, tick: time.Second / TickRate, now: time.Now, games: launch.Default}
 }
 
 // world is what a newcomer needs to draw the square.
@@ -83,7 +90,7 @@ func (h *Hub) Join(guild string, p Profile) *Conn {
 		go h.run(sq)
 	}
 	pl, _ := sq.room.Join(p) // the square was picked with room to spare
-	c := &Conn{hub: h, sq: sq, id: p.ID, out: make(chan []byte, outBuffer), done: make(chan struct{})}
+	c := &Conn{hub: h, sq: sq, id: p.ID, host: p.Host, out: make(chan []byte, outBuffer), done: make(chan struct{})}
 	h.broadcast(sq, Event{Type: "join", Player: pl})
 	sq.conns[p.ID] = c
 	c.out <- encode(struct {
@@ -92,6 +99,10 @@ func (h *Hub) Join(guild string, p Profile) *Conn {
 		World   world     `json:"world"`
 		Players []*Player `json:"players"`
 	}{"welcome", p.ID, world{Width, Height, Radius, Obstacles}, sq.room.Players()})
+	if sq.game != nil {
+		sq.game.Rejoin(p.ID)
+		c.out <- gameStart(sq.game)
+	}
 	return c
 }
 
@@ -112,11 +123,101 @@ func (c *Conn) Send(in Input) {
 	h := c.hub
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if c.sq.conns[c.id] != c {
+	if c.sq.conns[c.id] != c || c.sq.game != nil {
 		return
 	}
 	for _, ev := range c.sq.room.Apply(c.id, in, h.now()) {
 		h.broadcast(c.sq, ev)
+	}
+}
+
+// Error codes sent to a player whose game request was refused.
+const (
+	ErrNotHost     = "not_host"
+	ErrPlayerCount = "player_count"
+	ErrPlaying     = "already_playing"
+)
+
+// Play handles what a player pressed about a game.
+func (c *Conn) Play(in GameInput) {
+	h := c.hub
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	sq := c.sq
+	if sq.conns[c.id] != c {
+		return
+	}
+	switch {
+	case in.Launch:
+		h.launch(c)
+	case in.Stop:
+		if !c.host {
+			h.sendTo(c, encode(Event{Type: "error", Code: ErrNotHost}))
+		} else if sq.game != nil {
+			h.endGame(sq)
+		}
+	case in.Play != nil && sq.game != nil:
+		sq.game.Apply(c.id, *in.Play)
+	}
+}
+
+// launch starts «El gran lanzamiento» with the first players in the square.
+func (h *Hub) launch(c *Conn) {
+	sq := c.sq
+	switch {
+	case !c.host:
+		h.sendTo(c, encode(Event{Type: "error", Code: ErrNotHost}))
+		return
+	case sq.game != nil:
+		h.sendTo(c, encode(Event{Type: "error", Code: ErrPlaying}))
+		return
+	}
+	var ids []string
+	for _, p := range sq.room.Players() {
+		if len(ids) < launch.MaxPlayers {
+			ids = append(ids, p.ID)
+		}
+	}
+	g, err := launch.New(ids, h.games)
+	if err != nil {
+		h.sendTo(c, encode(Event{Type: "error", Code: ErrPlayerCount}))
+		return
+	}
+	sq.room.Halt()
+	sq.game = g
+	h.send(sq, gameStart(g))
+}
+
+func (h *Hub) endGame(sq *square) {
+	sq.game = nil
+	h.send(sq, encode(Event{Type: "game_end"}))
+}
+
+// gameStart tells a player a game is on: the office to draw and who plays.
+func gameStart(g *launch.Game) []byte {
+	return encode(struct {
+		Type    string        `json:"t"`
+		Map     launch.Office `json:"map"`
+		Players []string      `json:"players"`
+	}{"game_start", launch.Map(), g.Players()})
+}
+
+func (h *Hub) stepGame(sq *square) {
+	g := sq.game
+	g.Step(h.tick)
+	if g.Done() {
+		h.endGame(sq)
+		return
+	}
+	ids := make([]string, 0, len(sq.conns))
+	for id := range sq.conns {
+		ids = append(ids, id)
+	}
+	views := g.Views(ids)
+	for _, id := range ids {
+		if c := sq.conns[id]; c != nil {
+			h.sendTo(c, encode(views[id]))
+		}
 	}
 }
 
@@ -160,7 +261,9 @@ func (h *Hub) run(sq *square) {
 			return
 		case <-t.C:
 			h.mu.Lock()
-			if sq.room.Step(h.tick) {
+			if sq.game != nil {
+				h.stepGame(sq)
+			} else if sq.room.Step(h.tick) {
 				h.broadcastState(sq)
 			}
 			h.mu.Unlock()
@@ -193,6 +296,9 @@ func (h *Hub) leave(c *Conn, reason string) {
 	}
 	delete(sq.conns, c.id)
 	sq.room.Leave(c.id)
+	if sq.game != nil {
+		sq.game.Leave(c.id)
+	}
 	c.reason = reason
 	close(c.done)
 	if len(sq.conns) == 0 {
@@ -215,6 +321,15 @@ func (h *Hub) leave(c *Conn, reason string) {
 }
 
 func (h *Hub) broadcast(sq *square, ev Event) { h.send(sq, encode(ev)) }
+
+// sendTo sends to one player, dropping them if they can't keep up. h.mu must be held.
+func (h *Hub) sendTo(c *Conn, msg []byte) {
+	select {
+	case c.out <- msg:
+	default:
+		h.leave(c, ReasonSlow)
+	}
+}
 
 // send must be called with h.mu held. A connection whose buffer is full is dropped rather
 // than holding up the square.
