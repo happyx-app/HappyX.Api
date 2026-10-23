@@ -58,6 +58,7 @@ func (s *Service) ListActiveGuilds(ctx context.Context) ([]domain.Guild, error) 
 type SettingsPatch struct {
 	Anonymous       *bool
 	Timezone        *string
+	Language        *string
 	SurveyHour      *int
 	ReportFrequency *domain.ReportFrequency
 	AdminDiscordID  *string
@@ -74,6 +75,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.Timezone != nil {
 		st.Timezone = *p.Timezone
+	}
+	if p.Language != nil {
+		st.Language = *p.Language
 	}
 	if p.SurveyHour != nil {
 		st.SurveyHour = *p.SurveyHour
