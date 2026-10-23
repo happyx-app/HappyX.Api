@@ -68,6 +68,52 @@ type GuildSettings struct {
 	KudosChannelID string
 	// GamesEnabled turns on the weekly «Who's who?» game. Off by default.
 	GamesEnabled bool
+	// WorkingDays are the days the daily survey goes out. Monday to Friday by default.
+	WorkingDays Weekdays
+}
+
+// Weekdays is a set of days of the week, one bit per time.Weekday (bit 0 is Sunday).
+type Weekdays uint8
+
+// MondayToFriday is the default working week.
+const MondayToFriday Weekdays = 1<<time.Monday | 1<<time.Tuesday | 1<<time.Wednesday | 1<<time.Thursday | 1<<time.Friday
+
+const allWeekdays Weekdays = 1<<7 - 1
+
+// WeekdaysOf builds a set from ISO day numbers, 1 (Monday) to 7 (Sunday).
+func WeekdaysOf(iso []int) (Weekdays, error) {
+	var w Weekdays
+	for _, n := range iso {
+		if n < 1 || n > 7 {
+			return 0, invalid("working_days must hold days 1 (Monday) to 7 (Sunday)")
+		}
+		w |= 1 << time.Weekday(n%7)
+	}
+	return w, nil
+}
+
+// Has reports whether d is in the set.
+func (w Weekdays) Has(d time.Weekday) bool { return w&(1<<d) != 0 }
+
+// ISO lists the set as ISO day numbers, Monday (1) first.
+func (w Weekdays) ISO() []int {
+	out := []int{}
+	for n := 1; n <= 7; n++ {
+		if w.Has(time.Weekday(n % 7)) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// IsWorkingDay reports whether the survey goes out on day. Settings that never set their
+// working days count as Monday to Friday.
+func (s GuildSettings) IsWorkingDay(day time.Time) bool {
+	w := s.WorkingDays
+	if w == 0 {
+		w = MondayToFriday
+	}
+	return w.Has(day.Weekday())
 }
 
 func DefaultGuildSettings() GuildSettings {
@@ -77,6 +123,7 @@ func DefaultGuildSettings() GuildSettings {
 		SurveyHour:      13,
 		ReportFrequency: ReportWeekly,
 		Language:        "en",
+		WorkingDays:     MondayToFriday,
 	}
 }
 
@@ -89,6 +136,9 @@ func (s GuildSettings) Validate() error {
 	}
 	if !validLanguage(s.Language) {
 		return invalid("language must be a code like \"en\" or \"pt-BR\"")
+	}
+	if s.WorkingDays == 0 || s.WorkingDays&^allWeekdays != 0 {
+		return invalid("working_days must have at least one day")
 	}
 	if !s.ReportFrequency.Valid() {
 		return invalid("report_frequency must be %q or %q", ReportWeekly, ReportMonthly)

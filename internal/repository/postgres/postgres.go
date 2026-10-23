@@ -75,27 +75,29 @@ type GuildRepo struct{ db *pgxpool.Pool }
 func NewGuildRepo(db *pgxpool.Pool) *GuildRepo { return &GuildRepo{db: db} }
 
 const guildCols = `discord_id, name, admin_discord_id, anonymous, timezone, survey_hour,
-	report_frequency, language, kudos_channel_id, games_enabled, active, created_at, updated_at`
+	report_frequency, language, kudos_channel_id, games_enabled, working_days, active, created_at, updated_at`
 
 func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var g domain.Guild
 	var freq string
+	var workingDays int16
 	err := row.Scan(&g.DiscordID, &g.Name, &g.AdminDiscordID, &g.Settings.Anonymous,
-		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &workingDays, &g.Active, &g.CreatedAt, &g.UpdatedAt)
 	g.Settings.ReportFrequency = domain.ReportFrequency(freq)
+	g.Settings.WorkingDays = domain.Weekdays(workingDays)
 	return g, notFound(err)
 }
 
 func (r *GuildRepo) Upsert(ctx context.Context, g domain.Guild) (domain.Guild, error) {
 	s := g.Settings
 	return scanGuild(r.db.QueryRow(ctx, `
-		INSERT INTO guilds (discord_id, name, admin_discord_id, anonymous, timezone, survey_hour, report_frequency, language)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO guilds (discord_id, name, admin_discord_id, anonymous, timezone, survey_hour, report_frequency, language, working_days)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (discord_id) DO UPDATE
 		SET name = EXCLUDED.name, admin_discord_id = EXCLUDED.admin_discord_id,
 		    active = TRUE, updated_at = now()
 		RETURNING `+guildCols,
-		g.DiscordID, g.Name, g.AdminDiscordID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language))
+		g.DiscordID, g.Name, g.AdminDiscordID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, int16(s.WorkingDays)))
 }
 
 func (r *GuildRepo) Get(ctx context.Context, guildID string) (domain.Guild, error) {
@@ -140,10 +142,12 @@ func (r *GuildRepo) list(ctx context.Context, sql string, args ...any) ([]domain
 func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s domain.GuildSettings) (domain.Guild, error) {
 	return scanGuild(r.db.QueryRow(ctx, `
 		UPDATE guilds SET admin_discord_id = $2, anonymous = $3, timezone = $4, survey_hour = $5,
-		       report_frequency = $6, language = $7, kudos_channel_id = $8, games_enabled = $9, updated_at = now()
+		       report_frequency = $6, language = $7, kudos_channel_id = $8, games_enabled = $9,
+		       working_days = $10, updated_at = now()
 		WHERE discord_id = $1
 		RETURNING `+guildCols,
-		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID, s.GamesEnabled))
+		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID, s.GamesEnabled,
+		int16(s.WorkingDays)))
 }
 
 func (r *GuildRepo) Deactivate(ctx context.Context, guildID string) error {

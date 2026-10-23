@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -276,8 +277,8 @@ func TestWebSettings(t *testing.T) {
 	a := newWebClient(t)
 	login(t, srv, a, "adminA")
 	code, g := patchSettings(t, srv, a, guildA, jsonCT+"; charset=utf-8",
-		`{"language":"es","survey_hour":9,"timezone":"America/Bogota","report_frequency":"monthly","anonymous":false}`)
-	if code != 200 || g["language"] != "es" || g["survey_hour"].(float64) != 9 || g["timezone"] != "America/Bogota" ||
+		`{"language":"es","survey_hour":9,"timezone":"America/Bogota","report_frequency":"monthly","anonymous":false,"working_days":[7,1,2,3,4]}`)
+	if code != 200 || g["language"] != "es" || fmt.Sprint(g["working_days"]) != "[1 2 3 4 7]" || g["survey_hour"].(float64) != 9 || g["timezone"] != "America/Bogota" ||
 		g["report_frequency"] != "monthly" || g["anonymous"] != false || g["admin_discord_user_id"] != adminA {
 		t.Fatalf("admin A update: %d %v", code, g)
 	}
@@ -294,6 +295,8 @@ func TestWebSettings(t *testing.T) {
 		{"no content type", guildA, "", `{"language":"es"}`, 415},
 		{"bad hour", guildA, jsonCT, `{"survey_hour":24}`, 400},
 		{"bad timezone", guildA, jsonCT, `{"timezone":"Mars/Olympus"}`, 400},
+		{"no working days", guildA, jsonCT, `{"working_days":[]}`, 400},
+		{"bad working day", guildA, jsonCT, `{"working_days":[0,1]}`, 400},
 		{"changing the report admin", guildA, jsonCT, `{"admin_discord_user_id":"` + adminB + `"}`, 400},
 	} {
 		if code, out := patchSettings(t, srv, a, c.guild, c.ct, c.body); code != c.want {

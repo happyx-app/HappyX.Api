@@ -71,8 +71,8 @@ func TestBuildReport(t *testing.T) {
 	if want := (5.0 + 2 + 3) / 3; r.Average != want {
 		t.Fatalf("average = %v, want %v", r.Average, want)
 	}
-	if len(r.Days) != 7 {
-		t.Fatalf("days = %d, want 7 (one per day, gaps included)", len(r.Days))
+	if len(r.Days) != 5 {
+		t.Fatalf("days = %d, want 5 (one per working day, gaps included)", len(r.Days))
 	}
 	if r.Days[0].Average != 3.5 || r.Days[1].Responses != 0 {
 		t.Fatalf("unexpected day stats: %+v", r.Days[:2])
@@ -88,6 +88,52 @@ func TestBuildReport(t *testing.T) {
 	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
 	if r.Messages[0].Username != "ana" || r.Messages[0].MemberDiscordID != userA {
 		t.Fatalf("named report missing identity: %+v", r.Messages)
+	}
+}
+
+func TestBuildReportShowsNonWorkingDaysOnlyWithAnswers(t *testing.T) {
+	entries := []MoodEntry{
+		{MemberDiscordID: userA, Day: day("2026-10-24"), Mood: MoodGood}, // Saturday
+	}
+	g := Guild{DiscordID: guildA, Settings: DefaultGuildSettings()}
+	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, nil)
+	if len(r.Days) != 6 || r.Days[5].Day != day("2026-10-24") || r.Days[5].Responses != 1 {
+		t.Fatalf("want Monday-Friday plus the answered Saturday, got %+v", r.Days)
+	}
+
+	g.Settings.WorkingDays = allWeekdays
+	if r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, nil); len(r.Days) != 7 {
+		t.Fatalf("every day working: got %d days", len(r.Days))
+	}
+}
+
+func TestWeekdays(t *testing.T) {
+	w, err := WeekdaysOf([]int{7, 1, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.Has(time.Sunday) || !w.Has(time.Monday) || w.Has(time.Tuesday) {
+		t.Fatalf("unexpected set %07b", w)
+	}
+	if got := w.ISO(); len(got) != 3 || got[0] != 1 || got[1] != 3 || got[2] != 7 {
+		t.Fatalf("ISO = %v, want [1 3 7]", got)
+	}
+	if got := MondayToFriday.ISO(); len(got) != 5 || got[0] != 1 || got[4] != 5 {
+		t.Fatalf("Monday to Friday = %v", got)
+	}
+	for _, bad := range [][]int{{0}, {8}, {1, -1}} {
+		if _, err := WeekdaysOf(bad); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%v: want ErrInvalid, got %v", bad, err)
+		}
+	}
+
+	s := DefaultGuildSettings()
+	s.WorkingDays = 0
+	if err := s.Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("no working days: want ErrInvalid, got %v", err)
+	}
+	if !s.IsWorkingDay(day("2026-10-23")) || s.IsWorkingDay(day("2026-10-24")) {
+		t.Fatal("unset working days should count as Monday to Friday")
 	}
 }
 

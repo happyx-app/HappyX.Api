@@ -69,6 +69,7 @@ type SettingsPatch struct {
 	// KudosChannelID set to "" goes back to posting where the command is used.
 	KudosChannelID *string
 	GamesEnabled   *bool
+	WorkingDays    *domain.Weekdays
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -97,6 +98,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.GamesEnabled != nil {
 		st.GamesEnabled = *p.GamesEnabled
+	}
+	if p.WorkingDays != nil {
+		st.WorkingDays = *p.WorkingDays
 	}
 	if p.AdminDiscordID != nil {
 		g.AdminDiscordID = *p.AdminDiscordID

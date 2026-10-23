@@ -59,13 +59,14 @@ func TestGuildLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !g.Settings.Anonymous || !g.Active {
-		t.Fatalf("new guild should be active and anonymous: %+v", g)
+	if !g.Settings.Anonymous || !g.Active || g.Settings.WorkingDays != domain.MondayToFriday {
+		t.Fatalf("new guild should be active, anonymous and work Monday to Friday: %+v", g)
 	}
 
 	off := false
 	hour := 9
-	if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{Anonymous: &off, SurveyHour: &hour}); err != nil {
+	sunToThu := domain.Weekdays(1<<time.Sunday | 1<<time.Monday | 1<<time.Tuesday | 1<<time.Wednesday | 1<<time.Thursday)
+	if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{Anonymous: &off, SurveyHour: &hour, WorkingDays: &sunToThu}); err != nil {
 		t.Fatal(err)
 	}
 	// Re-registering (e.g. bot restart) keeps settings.
@@ -73,7 +74,7 @@ func TestGuildLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.Settings.Anonymous || g.Settings.SurveyHour != 9 || g.Name != "A renamed" {
+	if g.Settings.Anonymous || g.Settings.SurveyHour != 9 || g.Settings.WorkingDays != sunToThu || g.Name != "A renamed" {
 		t.Fatalf("settings lost on re-register: %+v", g)
 	}
 

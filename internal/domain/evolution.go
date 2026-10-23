@@ -10,7 +10,7 @@ type Evolution struct {
 	Responses int
 	Average   float64 // 0 when there are no responses
 	// Streak is how many days in a row up to today the person has answered. Not having
-	// answered yet today doesn't break it.
+	// answered yet today doesn't break it, and neither do the guild's non-working days.
 	Streak int
 }
 
@@ -37,9 +37,10 @@ func BuildEvolution(g Guild, entries []MoodEntry, from, to, today time.Time) Evo
 	if !answered[d] {
 		d = d.AddDate(0, 0, -1)
 	}
-	for answered[d] {
-		ev.Streak++
-		d = d.AddDate(0, 0, -1)
+	for ; answered[d] || !g.Settings.IsWorkingDay(d); d = d.AddDate(0, 0, -1) {
+		if answered[d] {
+			ev.Streak++
+		}
 	}
 	return ev
 }
