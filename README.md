@@ -31,6 +31,11 @@ Discord user in two servers is two separate members with separate histories. See
 Guilds are anonymous by default: reports include messages but never who wrote them. An admin can
 turn this off with `PATCH /v1/guilds/{guildID}` `{"anonymous": false}`.
 
+Each answer remembers whether the guild was anonymous when it was given. Turning anonymity off
+only names the answers given from then on; earlier answers stay anonymous for good. A member who
+answers the same day again after the switch replaces their answer, which is then named. Turning
+anonymity back on hides every author again.
+
 Kudos are the exception: they are public thanks posted in the server with both names, so reports
 list them with names whatever the setting.
 

@@ -91,6 +91,32 @@ func TestBuildReport(t *testing.T) {
 	}
 }
 
+func TestBuildReportKeepsEarlierAnswersAnonymous(t *testing.T) {
+	entries := []MoodEntry{
+		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodGreat, Message: "said in private", Anonymous: true},
+		{MemberDiscordID: userB, Day: day("2026-10-20"), Mood: MoodBad, Message: "said in public"},
+	}
+	usernames := map[string]string{userA: "ana", userB: "bob"}
+	g := Guild{DiscordID: guildA, Settings: DefaultGuildSettings()}
+	g.Settings.Anonymous = false
+
+	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
+	if m := r.Messages[0]; m.MemberDiscordID != "" || m.Username != "" {
+		t.Fatalf("answer given while anonymous shows its author: %+v", m)
+	}
+	if m := r.Messages[1]; m.Username != "bob" || m.MemberDiscordID != userB {
+		t.Fatalf("answer given in public lost its author: %+v", m)
+	}
+
+	g.Settings.Anonymous = true
+	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
+	for _, m := range r.Messages {
+		if m.MemberDiscordID != "" || m.Username != "" {
+			t.Fatalf("anonymous guild shows an author: %+v", m)
+		}
+	}
+}
+
 func TestLanguageValidation(t *testing.T) {
 	for _, ok := range []string{"en", "es", "ca", "pt-BR", "ast"} {
 		s := DefaultGuildSettings()
