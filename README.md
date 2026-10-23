@@ -101,7 +101,7 @@ Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 40
 ## Development
 
 ```sh
-docker run -d --name happyx-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=happyx_test -p 55432:5432 postgres:17-alpine
+docker run -d --name happyx-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=happyx_test -p 55432:5432 postgres:18-alpine
 export TEST_DATABASE_URL='postgres://postgres:test@localhost:55432/happyx_test?sslmode=disable'
 go test -p 1 ./...
 ```
