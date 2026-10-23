@@ -14,6 +14,34 @@ type Report struct {
 	Distribution   map[Mood]int // count per mood
 	Days           []DayStat
 	Messages       []ReportMessage
+	Kudos          KudosSummary
+}
+
+// KudosSummary counts the kudos given in a report's period. Kudos are public, so they keep
+// their names even when the guild's moods are anonymous.
+type KudosSummary struct {
+	Count     int
+	Givers    int
+	Receivers int
+	// Highlights are the latest kudos, newest first, at most MaxKudosHighlights.
+	Highlights []Kudos
+}
+
+const MaxKudosHighlights = 5
+
+// SummarizeKudos counts kudos (ordered oldest first) and keeps the latest as highlights.
+func SummarizeKudos(kudos []Kudos) KudosSummary {
+	s := KudosSummary{Count: len(kudos), Highlights: []Kudos{}}
+	givers, receivers := map[string]struct{}{}, map[string]struct{}{}
+	for _, k := range kudos {
+		givers[k.GiverDiscordID] = struct{}{}
+		receivers[k.ReceiverDiscordID] = struct{}{}
+	}
+	s.Givers, s.Receivers = len(givers), len(receivers)
+	for i := len(kudos) - 1; i >= 0 && len(s.Highlights) < MaxKudosHighlights; i-- {
+		s.Highlights = append(s.Highlights, kudos[i])
+	}
+	return s
 }
 
 type DayStat struct {

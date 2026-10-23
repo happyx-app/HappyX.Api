@@ -75,13 +75,13 @@ type GuildRepo struct{ db *pgxpool.Pool }
 func NewGuildRepo(db *pgxpool.Pool) *GuildRepo { return &GuildRepo{db: db} }
 
 const guildCols = `discord_id, name, admin_discord_id, anonymous, timezone, survey_hour,
-	report_frequency, language, active, created_at, updated_at`
+	report_frequency, language, kudos_channel_id, active, created_at, updated_at`
 
 func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var g domain.Guild
 	var freq string
 	err := row.Scan(&g.DiscordID, &g.Name, &g.AdminDiscordID, &g.Settings.Anonymous,
-		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Active, &g.CreatedAt, &g.UpdatedAt)
 	g.Settings.ReportFrequency = domain.ReportFrequency(freq)
 	return g, notFound(err)
 }
@@ -134,10 +134,10 @@ func (r *GuildRepo) list(ctx context.Context, sql string, args ...any) ([]domain
 func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s domain.GuildSettings) (domain.Guild, error) {
 	return scanGuild(r.db.QueryRow(ctx, `
 		UPDATE guilds SET admin_discord_id = $2, anonymous = $3, timezone = $4, survey_hour = $5,
-		       report_frequency = $6, language = $7, updated_at = now()
+		       report_frequency = $6, language = $7, kudos_channel_id = $8, updated_at = now()
 		WHERE discord_id = $1
 		RETURNING `+guildCols,
-		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language))
+		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID))
 }
 
 func (r *GuildRepo) Deactivate(ctx context.Context, guildID string) error {
@@ -291,6 +291,77 @@ func (r *MoodRepo) list(ctx context.Context, sql string, args ...any) ([]domain.
 			return nil, err
 		}
 		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// --- Kudos ---
+
+type KudosRepo struct{ db *pgxpool.Pool }
+
+func NewKudosRepo(db *pgxpool.Pool) *KudosRepo { return &KudosRepo{db: db} }
+
+// Both members are looked up within the guild, so kudos can never link members of
+// different guilds.
+const kudosCols = `g.discord_id, gm.discord_id, gm.username, rm.discord_id, rm.username, k.day, k.message, k.created_at`
+
+func scanKudos(row pgx.Row) (domain.Kudos, error) {
+	var k domain.Kudos
+	err := row.Scan(&k.GuildDiscordID, &k.GiverDiscordID, &k.GiverUsername, &k.ReceiverDiscordID,
+		&k.ReceiverUsername, &k.Day, &k.Message, &k.CreatedAt)
+	k.Day = domain.TruncateDay(k.Day)
+	return k, notFound(err)
+}
+
+func (r *KudosRepo) Create(ctx context.Context, k domain.Kudos) (domain.Kudos, error) {
+	return scanKudos(r.db.QueryRow(ctx, `
+		WITH k AS (
+		         INSERT INTO kudos (guild_id, giver_member_id, receiver_member_id, day, message)
+		         SELECT g.id, gm.id, rm.id, $4, $5
+		         FROM guilds g
+		         JOIN members gm ON gm.guild_id = g.id AND gm.discord_id = $2
+		         JOIN members rm ON rm.guild_id = g.id AND rm.discord_id = $3
+		         WHERE g.discord_id = $1
+		         RETURNING *
+		     )
+		SELECT `+kudosCols+`
+		FROM k
+		JOIN guilds g ON g.id = k.guild_id
+		JOIN members gm ON gm.id = k.giver_member_id
+		JOIN members rm ON rm.id = k.receiver_member_id`,
+		k.GuildDiscordID, k.GiverDiscordID, k.ReceiverDiscordID, k.Day, k.Message))
+}
+
+func (r *KudosRepo) CountGivenOn(ctx context.Context, guildID, giverID string, day time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `
+		SELECT count(*) FROM kudos k
+		JOIN guilds g ON g.id = k.guild_id
+		JOIN members gm ON gm.id = k.giver_member_id
+		WHERE g.discord_id = $1 AND gm.discord_id = $2 AND k.day = $3`, guildID, giverID, day).Scan(&n)
+	return n, err
+}
+
+func (r *KudosRepo) ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.Kudos, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT `+kudosCols+`
+		FROM kudos k
+		JOIN guilds g ON g.id = k.guild_id
+		JOIN members gm ON gm.id = k.giver_member_id
+		JOIN members rm ON rm.id = k.receiver_member_id
+		WHERE g.discord_id = $1 AND k.day BETWEEN $2 AND $3
+		ORDER BY k.created_at, k.id`, guildID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Kudos
+	for rows.Next() {
+		k, err := scanKudos(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, k)
 	}
 	return out, rows.Err()
 }

@@ -22,6 +22,7 @@ type guildDTO struct {
 	Language        string    `json:"language"`
 	SurveyHour      int       `json:"survey_hour"`
 	ReportFrequency string    `json:"report_frequency"`
+	KudosChannelID  string    `json:"kudos_channel_id"`
 	Active          bool      `json:"active"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -31,7 +32,7 @@ func toGuildDTO(g domain.Guild) guildDTO {
 		DiscordID: g.DiscordID, Name: g.Name, AdminDiscordID: g.AdminDiscordID,
 		Anonymous: g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency),
-		Active: g.Active, CreatedAt: g.CreatedAt,
+		KudosChannelID: g.Settings.KudosChannelID, Active: g.Active, CreatedAt: g.CreatedAt,
 	}
 }
 
@@ -50,16 +51,41 @@ type moodDTO struct {
 }
 
 type reportDTO struct {
-	DiscordGuildID string         `json:"discord_guild_id"`
-	From           string         `json:"from"`
-	To             string         `json:"to"`
-	Anonymous      bool           `json:"anonymous"`
-	Responses      int            `json:"responses"`
-	Respondents    int            `json:"respondents"`
-	Average        float64        `json:"average"`
-	Distribution   map[string]int `json:"distribution"`
-	Days           []dayDTO       `json:"days"`
-	Messages       []reportMsgDTO `json:"messages"`
+	DiscordGuildID string          `json:"discord_guild_id"`
+	From           string          `json:"from"`
+	To             string          `json:"to"`
+	Anonymous      bool            `json:"anonymous"`
+	Responses      int             `json:"responses"`
+	Respondents    int             `json:"respondents"`
+	Average        float64         `json:"average"`
+	Distribution   map[string]int  `json:"distribution"`
+	Days           []dayDTO        `json:"days"`
+	Messages       []reportMsgDTO  `json:"messages"`
+	Kudos          kudosSummaryDTO `json:"kudos"`
+}
+
+type kudosSummaryDTO struct {
+	Count      int        `json:"count"`
+	Givers     int        `json:"givers"`
+	Receivers  int        `json:"receivers"`
+	Highlights []kudosDTO `json:"highlights"`
+}
+
+type kudosDTO struct {
+	Day          string    `json:"day"`
+	FromID       string    `json:"from_discord_user_id"`
+	FromUsername string    `json:"from_username"`
+	ToID         string    `json:"to_discord_user_id"`
+	ToUsername   string    `json:"to_username"`
+	Message      string    `json:"message"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func toKudosDTO(k domain.Kudos) kudosDTO {
+	return kudosDTO{
+		Day: k.Day.Format(dateLayout), FromID: k.GiverDiscordID, FromUsername: k.GiverUsername,
+		ToID: k.ReceiverDiscordID, ToUsername: k.ReceiverUsername, Message: k.Message, CreatedAt: k.CreatedAt,
+	}
 }
 
 type dayDTO struct {
@@ -127,13 +153,14 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 		SurveyHour      *int    `json:"survey_hour"`
 		ReportFrequency *string `json:"report_frequency"`
 		AdminDiscordID  *string `json:"admin_discord_user_id"`
+		KudosChannelID  *string `json:"kudos_channel_id"` // "" clears it
 	}
 	if !decode(w, r, &in) {
 		return
 	}
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
-		AdminDiscordID: in.AdminDiscordID,
+		AdminDiscordID: in.AdminDiscordID, KudosChannelID: in.KudosChannelID,
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)
@@ -264,6 +291,12 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		Anonymous: rep.Anonymous, Responses: rep.Responses, Respondents: rep.Respondents,
 		Average: rep.Average, Distribution: map[string]int{},
 		Days: []dayDTO{}, Messages: []reportMsgDTO{},
+		Kudos: kudosSummaryDTO{
+			Count: rep.Kudos.Count, Givers: rep.Kudos.Givers, Receivers: rep.Kudos.Receivers, Highlights: []kudosDTO{},
+		},
+	}
+	for _, k := range rep.Kudos.Highlights {
+		out.Kudos.Highlights = append(out.Kudos.Highlights, toKudosDTO(k))
 	}
 	for m, n := range rep.Distribution {
 		out.Distribution[strconv.Itoa(int(m))] = n
@@ -278,6 +311,29 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// --- Kudos ---
+
+// giveKudos answers 201 with the stored kudos, 403 when either user isn't a known member of
+// the guild and 429 when the giver reached today's limit.
+func (s *Server) giveKudos(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		From    string `json:"from_discord_user_id"`
+		To      string `json:"to_discord_user_id"`
+		Message string `json:"message"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	k, err := s.svc.GiveKudos(r.Context(), usecase.GiveKudosInput{
+		GuildID: r.PathValue("guildID"), FromUserID: in.From, ToUserID: in.To, Message: in.Message,
+	})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toKudosDTO(k))
 }
 
 // --- Dispatches ---

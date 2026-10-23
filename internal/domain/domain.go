@@ -15,6 +15,7 @@ var (
 	ErrInvalid    = errors.New("invalid input")
 	ErrInactive   = errors.New("guild is inactive")
 	ErrNotAMember = errors.New("user is not an active member of this guild")
+	ErrTooMany    = errors.New("too many requests")
 )
 
 // ValidationError wraps ErrInvalid with a human readable reason.
@@ -58,6 +59,9 @@ type GuildSettings struct {
 	// Language is the code of the language the bot speaks in this guild, e.g. "en" or "pt-BR".
 	// The API only checks its shape; the bot decides which languages it supports.
 	Language string
+	// KudosChannelID is the channel where kudos cards are posted. Empty means the channel where
+	// the command was used.
+	KudosChannelID string
 }
 
 func DefaultGuildSettings() GuildSettings {
@@ -82,6 +86,11 @@ func (s GuildSettings) Validate() error {
 	}
 	if !s.ReportFrequency.Valid() {
 		return invalid("report_frequency must be %q or %q", ReportWeekly, ReportMonthly)
+	}
+	if s.KudosChannelID != "" {
+		if err := validateSnowflake("kudos_channel_id", s.KudosChannelID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
