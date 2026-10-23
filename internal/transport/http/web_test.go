@@ -8,6 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -33,6 +34,8 @@ func (fakeDiscord) Viewer(_ context.Context, code string) (domain.Viewer, error)
 	switch code {
 	case "adminA":
 		return domain.Viewer{DiscordID: adminA, Username: "Ana"}, nil
+	case "member":
+		return domain.Viewer{DiscordID: memberID, Username: "Mia"}, nil
 	case "managerB":
 		return domain.Viewer{DiscordID: managerB, Username: "Bea", ManagedGuilds: []string{guildB, "100000000000000077"}}, nil
 	}
@@ -163,5 +166,72 @@ func TestWebDisabled(t *testing.T) {
 	srv := newTestServer(t)
 	if code, _ := do(t, srv, "GET", "/web/auth/login", "", ""); code != 404 {
 		t.Fatalf("dashboard routes should not exist without web config: %d", code)
+	}
+}
+
+func TestWebMyMoods(t *testing.T) {
+	srv := newTestServer(t, func(s *httpapi.Server) {
+		s.WithWeb(httpapi.Web{Identity: fakeDiscord{}, SessionKey: []byte("0123456789abcdef0123456789abcdef"), PublicURL: "http://happyx.test/"})
+	})
+	const other = "200000000000000002"
+	mood := func(g, u, day string, m int, msg string) {
+		body := `{"mood":` + strconv.Itoa(m) + `,"day":"` + day + `","message":"` + msg + `"}`
+		if code, out := do(t, srv, "PUT", "/v1/guilds/"+g+"/members/"+u+"/mood", key, body); code != 200 {
+			t.Fatalf("mood: %d %v", code, out)
+		}
+	}
+	for _, s := range []struct{ method, path, body string }{
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + guildA + `","name":"Zeta","admin_discord_user_id":"` + adminA + `"}`},
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + guildB + `","name":"alfa","admin_discord_user_id":"` + adminB + `"}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID, `{"username":"mia"}`},
+		{"PUT", "/v1/guilds/" + guildB + "/members/" + memberID, `{"username":"mia"}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + other, `{"username":"otro"}`},
+	} {
+		if code, body := do(t, srv, s.method, s.path, key, s.body); code != 200 {
+			t.Fatalf("%s %s: %d %v", s.method, s.path, code, body)
+		}
+	}
+	mood(guildA, memberID, "2026-10-01", 1, "") // outside the period, still counts for nothing
+	mood(guildA, memberID, "2026-10-20", 4, "")
+	mood(guildA, memberID, "2026-10-21", 5, "")
+	mood(guildA, memberID, "2026-10-22", 3, "regular")
+	mood(guildB, memberID, "2026-10-21", 2, "")
+	mood(guildA, other, "2026-10-22", 1, "no es mio")
+
+	anon := newWebClient(t)
+	if res, _ := get(t, anon, srv.URL+"/web/me/moods"); res.StatusCode != 401 {
+		t.Fatalf("my moods without a session: %d", res.StatusCode)
+	}
+
+	// A member who administers nothing still sees their own answers, and only theirs.
+	c := newWebClient(t)
+	login(t, srv, c, "member")
+	if _, me := get(t, c, srv.URL+"/web/me"); len(me["guilds"].([]any)) != 0 {
+		t.Fatalf("a plain member should not get dashboard servers: %v", me)
+	}
+	res, out := get(t, c, srv.URL+"/web/me/moods?from=2026-10-16&to=2026-10-22")
+	if res.StatusCode != 200 {
+		t.Fatalf("my moods: %d %v", res.StatusCode, out)
+	}
+	gs := out["guilds"].([]any)
+	if len(gs) != 2 {
+		t.Fatalf("want 2 servers, got %v", gs)
+	}
+	b, a := gs[0].(map[string]any), gs[1].(map[string]any)                                              // ordered by name: alfa, Zeta
+	if b["discord_guild_id"] != guildB || b["responses"].(float64) != 1 || b["streak"].(float64) != 1 { // answered yesterday, not yet today
+		t.Fatalf("server B: %v", b)
+	}
+	if a["discord_guild_id"] != guildA || a["responses"].(float64) != 3 || a["average"].(float64) != 4 || a["streak"].(float64) != 3 {
+		t.Fatalf("server A: %v", a)
+	}
+	entries := a["entries"].([]any)
+	if last := entries[len(entries)-1].(map[string]any); last["message"] != "regular" || last["day"] != "2026-10-22" {
+		t.Fatalf("server A entries: %v", entries)
+	}
+	if res, _ := get(t, c, srv.URL+"/web/guilds/"+guildA+"/report?from=2026-10-16&to=2026-10-22"); res.StatusCode != 404 {
+		t.Fatalf("a plain member reading the server report: %d", res.StatusCode)
+	}
+	if res, _ := get(t, c, srv.URL+"/web/me/moods?from=2026-10-22&to=2026-10-01"); res.StatusCode != 400 {
+		t.Fatalf("reversed range: %d", res.StatusCode)
 	}
 }

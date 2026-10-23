@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/moixblau/HappyX.Api/internal/domain"
@@ -298,6 +300,65 @@ func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]domain.
 			out = append(out, g)
 		}
 	}
+	return out, nil
+}
+
+// streakWindow is how far back answers are read to count a streak.
+const streakWindow = 400
+
+// Evolution returns the viewer's own answers in [from, to], one summary per guild they have
+// answered in, ordered by guild name. Any logged-in person can see their own answers, in every
+// guild, whether or not they administer it.
+func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.Time) ([]domain.Evolution, error) {
+	if v.DiscordID == "" {
+		return nil, nil
+	}
+	from, to = domain.TruncateDay(from), domain.TruncateDay(to)
+	if to.Before(from) {
+		return nil, domain.ValidationError{Reason: "to must not be before from"}
+	}
+	if to.Sub(from) > maxReportDays*24*time.Hour {
+		return nil, domain.ValidationError{Reason: fmt.Sprintf("range must be at most %d days", maxReportDays)}
+	}
+	// Read back far enough to count today's streak, and up to tomorrow so a guild whose
+	// timezone is ahead of UTC still sees today's answer.
+	nowDay := domain.TruncateDay(s.now().UTC())
+	readFrom, readTo := from, to
+	if w := nowDay.AddDate(0, 0, -streakWindow); w.Before(readFrom) {
+		readFrom = w
+	}
+	if t := nowDay.AddDate(0, 0, 1); t.After(readTo) {
+		readTo = t
+	}
+	entries, err := s.moods.ListForUser(ctx, v.DiscordID, readFrom, readTo)
+	if err != nil {
+		return nil, err
+	}
+	byGuild := map[string][]domain.MoodEntry{}
+	var order []string
+	for _, e := range entries {
+		if _, ok := byGuild[e.GuildDiscordID]; !ok {
+			order = append(order, e.GuildDiscordID)
+		}
+		byGuild[e.GuildDiscordID] = append(byGuild[e.GuildDiscordID], e)
+	}
+	out := make([]domain.Evolution, 0, len(order))
+	for _, id := range order {
+		g, err := s.guilds.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		ev := domain.BuildEvolution(g, byGuild[id], from, to, s.today(g))
+		if ev.Responses > 0 || ev.Streak > 0 {
+			out = append(out, ev)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if a, b := strings.ToLower(out[i].Guild.Name), strings.ToLower(out[j].Guild.Name); a != b {
+			return a < b
+		}
+		return out[i].Guild.DiscordID < out[j].Guild.DiscordID
+	})
 	return out, nil
 }
 

@@ -259,13 +259,27 @@ func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry) (domain.MoodE
 }
 
 func (r *MoodRepo) ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.MoodEntry, error) {
-	rows, err := r.db.Query(ctx, `
+	return r.list(ctx, `
 		SELECT `+moodCols+`
 		FROM mood_entries e
 		JOIN guilds g ON g.id = e.guild_id
 		JOIN members m ON m.id = e.member_id
 		WHERE g.discord_id = $1 AND e.day BETWEEN $2 AND $3
 		ORDER BY e.day, e.id`, guildID, from, to)
+}
+
+func (r *MoodRepo) ListForUser(ctx context.Context, userID string, from, to time.Time) ([]domain.MoodEntry, error) {
+	return r.list(ctx, `
+		SELECT `+moodCols+`
+		FROM mood_entries e
+		JOIN guilds g ON g.id = e.guild_id
+		JOIN members m ON m.id = e.member_id
+		WHERE m.discord_id = $1 AND e.day BETWEEN $2 AND $3
+		ORDER BY e.day, e.id`, userID, from, to)
+}
+
+func (r *MoodRepo) list(ctx context.Context, sql string, args ...any) ([]domain.MoodEntry, error) {
+	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
