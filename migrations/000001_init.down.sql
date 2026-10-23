@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS mood_entries;
+DROP TABLE IF EXISTS members;
+DROP TABLE IF EXISTS guilds;
