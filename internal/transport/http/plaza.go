@@ -9,6 +9,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/moixblau/HappyX.Api/internal/launch"
 	"github.com/moixblau/HappyX.Api/internal/plaza"
 )
 
@@ -48,7 +49,8 @@ func (s *Server) webPlaza(w http.ResponseWriter, r *http.Request, v domain.Viewe
 		return // Accept has already answered
 	}
 	ws.SetReadLimit(plazaReadLimit)
-	c := s.web.Plaza.Join(g.DiscordID, plaza.Profile{ID: v.DiscordID, Name: v.Username, Avatar: v.Avatar})
+	// The server's admins host the games: they start and stop them.
+	c := s.web.Plaza.Join(g.DiscordID, plaza.Profile{ID: v.DiscordID, Name: v.Username, Avatar: v.Avatar, Host: v.CanView(g)})
 	defer c.Close()
 
 	ctx, cancel := context.WithCancel(r.Context())
@@ -92,15 +94,19 @@ func (s *Server) webPlaza(w http.ResponseWriter, r *http.Request, v domain.Viewe
 	}
 }
 
-// plazaMessage is what the web sends: {"t":"move","dx":1,"dy":0}, {"t":"goto","x":10,"y":20}
-// or {"t":"emote","e":"wave"}.
+// plazaMessage is what the web sends. In the square: {"t":"move","dx":1,"dy":0},
+// {"t":"goto","x":10,"y":20} or {"t":"emote","e":"wave"}. For the games: {"t":"launch"} and
+// {"t":"stop"} from the host, and while one is played {"t":"g_move","dx":1,"dy":0},
+// {"t":"g_goto","x":3,"y":12} (a tile) and {"t":"order","w":"<worker>","task":4}.
 type plazaMessage struct {
-	Type  string  `json:"t"`
-	DX    int     `json:"dx"`
-	DY    int     `json:"dy"`
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	Emote string  `json:"e"`
+	Type   string  `json:"t"`
+	DX     int     `json:"dx"`
+	DY     int     `json:"dy"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Emote  string  `json:"e"`
+	Worker string  `json:"w"`
+	Task   int     `json:"task"`
 }
 
 func readPlaza(ctx context.Context, ws *websocket.Conn, c *plaza.Conn) {
@@ -122,6 +128,8 @@ func readPlaza(ctx context.Context, ws *websocket.Conn, c *plaza.Conn) {
 		}
 		if in, ok := m.input(); ok {
 			c.Send(in)
+		} else if in, ok := m.gameInput(); ok {
+			c.Play(in)
 		}
 	}
 }
@@ -136,4 +144,20 @@ func (m plazaMessage) input() (plaza.Input, bool) {
 		return plaza.Input{Emote: plaza.Emote(m.Emote)}, true
 	}
 	return plaza.Input{}, false
+}
+
+func (m plazaMessage) gameInput() (plaza.GameInput, bool) {
+	switch m.Type {
+	case "launch":
+		return plaza.GameInput{Launch: true}, true
+	case "stop":
+		return plaza.GameInput{Stop: true}, true
+	case "g_move":
+		return plaza.GameInput{Play: &launch.Input{Move: &[2]int{m.DX, m.DY}}}, true
+	case "g_goto":
+		return plaza.GameInput{Play: &launch.Input{Goto: &[2]int{int(m.X), int(m.Y)}}}, true
+	case "order":
+		return plaza.GameInput{Play: &launch.Input{Order: &launch.Order{Worker: m.Worker, Task: m.Task}}}, true
+	}
+	return plaza.GameInput{}, false
 }

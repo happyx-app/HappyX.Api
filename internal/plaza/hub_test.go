@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/moixblau/HappyX.Api/internal/launch"
 )
 
 // next waits for the next message of type typ, skipping others.
@@ -154,4 +156,68 @@ func TestHubDropsSlowConnections(t *testing.T) {
 	if slow.Reason() != ReasonSlow || h.Count("g1") != 1 {
 		t.Fatalf("reason %q", slow.Reason())
 	}
+}
+
+func TestHubLaunchesAGame(t *testing.T) {
+	h := NewHub()
+	h.games = launch.Config{Rounds: 1, Intro: time.Second, Round: time.Minute, Summary: time.Second, Final: 100 * time.Millisecond, TaskLife: time.Minute, Seed: 1}
+	host := h.Join("g1", Profile{ID: "host", Host: true})
+	defer host.Close()
+	b := h.Join("g1", Profile{ID: "b"})
+	defer b.Close()
+
+	b.Play(GameInput{Launch: true})
+	if e := next(t, b, "error"); e["code"] != ErrNotHost {
+		t.Fatalf("non-host launch: %v", e)
+	}
+	host.Play(GameInput{Launch: true})
+	if e := next(t, host, "error"); e["code"] != ErrPlayerCount {
+		t.Fatalf("launch with 2: %v", e)
+	}
+	c := h.Join("g1", Profile{ID: "c"})
+	defer c.Close()
+	host.Play(GameInput{Launch: true})
+	start := next(t, b, "game_start")
+	if len(start["players"].([]any)) != 3 || start["map"].(map[string]any)["cols"].(float64) != float64(launch.Cols) {
+		t.Fatalf("game_start: %v", start)
+	}
+	v := next(t, b, "game")
+	roles := map[string]bool{v["role"].(string): true}
+	roles[next(t, c, "game")["role"].(string)] = true
+	roles[next(t, host, "game")["role"].(string)] = true
+	if !roles["manager"] || !roles["worker"] || len(roles) != 2 {
+		t.Fatalf("roles: %v", roles)
+	}
+	host.Play(GameInput{Launch: true})
+	if e := next(t, host, "error"); e["code"] != ErrPlaying {
+		t.Fatalf("second launch: %v", e)
+	}
+	// Someone arriving mid-game watches it.
+	d := h.Join("g1", Profile{ID: "d"})
+	defer d.Close()
+	next(t, d, "game_start")
+	if v := next(t, d, "game"); v["role"] != "spectator" {
+		t.Fatalf("latecomer: %v", v)
+	}
+	b.Play(GameInput{Stop: true})
+	if e := next(t, b, "error"); e["code"] != ErrNotHost {
+		t.Fatalf("non-host stop: %v", e)
+	}
+	host.Play(GameInput{Stop: true})
+	next(t, c, "game_end")
+	// Back in the square, the avatars walk again.
+	c.Send(Input{Move: &[2]int{1, 0}})
+	next(t, b, "state")
+}
+
+func TestHubEndsFinishedGames(t *testing.T) {
+	h := NewHub()
+	h.games = launch.Config{Rounds: 1, Intro: 50 * time.Millisecond, Round: 100 * time.Millisecond, Summary: 0, Final: 50 * time.Millisecond, TaskLife: time.Minute, Seed: 1}
+	host := h.Join("g1", Profile{ID: "host", Host: true})
+	defer host.Close()
+	for _, id := range []string{"b", "c"} {
+		defer h.Join("g1", Profile{ID: id}).Close()
+	}
+	host.Play(GameInput{Launch: true})
+	next(t, host, "game_end")
 }

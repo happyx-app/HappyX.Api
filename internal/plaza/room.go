@@ -12,6 +12,8 @@ import (
 	"hash/fnv"
 	"math"
 	"time"
+
+	"github.com/moixblau/HappyX.Api/internal/launch"
 )
 
 // The world is measured in units; the web scales it to fit the screen.
@@ -93,6 +95,8 @@ type Profile struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Avatar string `json:"avatar,omitempty"`
+	// Host is a server admin: they can start and stop the games.
+	Host bool `json:"host,omitempty"`
 }
 
 // Player is an avatar in the square.
@@ -117,9 +121,19 @@ type Input struct {
 	Emote Emote
 }
 
+// GameInput is what a player pressed about a game: the host starting or stopping one, or a
+// move in the game being played.
+type GameInput struct {
+	Launch bool
+	Stop   bool
+	Play   *launch.Input
+}
+
 // Event is something everyone in the square must hear about.
 type Event struct {
 	Type string `json:"t"`
+	// error, for one player
+	Code string `json:"code,omitempty"`
 	// join
 	Player *Player `json:"player,omitempty"`
 	// leave, emote
@@ -195,6 +209,13 @@ func (r *Room) Leave(id string) {
 			r.order = append(r.order[:i], r.order[i+1:]...)
 			break
 		}
+	}
+}
+
+// Halt stops every avatar where it is, so a game starts and ends with nobody walking off.
+func (r *Room) Halt() {
+	for _, p := range r.players {
+		p.dx, p.dy, p.target = 0, 0, nil
 	}
 }
 
