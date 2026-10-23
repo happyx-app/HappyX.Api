@@ -12,6 +12,7 @@ import (
 	_ "time/tzdata" // timezone validation must not depend on the image having zoneinfo
 
 	"github.com/moixblau/HappyX.Api/internal/config"
+	"github.com/moixblau/HappyX.Api/internal/discord"
 	"github.com/moixblau/HappyX.Api/internal/repository/postgres"
 	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
 	"github.com/moixblau/HappyX.Api/internal/usecase"
@@ -45,9 +46,18 @@ func run(log *slog.Logger) error {
 		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool),
 		time.Now,
 	)
+	api := httpapi.NewServer(svc, cfg.ServiceKeyHashes, log)
+	if w := cfg.Web; w != nil {
+		api.WithWeb(httpapi.Web{
+			Identity:   discord.NewOAuth(w.DiscordClientID, w.DiscordClientSecret, w.RedirectURL()),
+			SessionKey: w.SessionSecret,
+			PublicURL:  w.PublicURL,
+		})
+		log.Info("web dashboard login enabled", "redirect_url", w.RedirectURL())
+	}
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.NewServer(svc, cfg.ServiceKeyHashes, log).Handler(),
+		Handler:           api.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

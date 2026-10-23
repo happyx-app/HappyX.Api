@@ -40,6 +40,10 @@ All secrets come from environment variables; nothing is read from files in the r
 | `DATABASE_URL` | PostgreSQL connection string |
 | `API_KEY_HASHES` | Comma separated SHA-256 hex digests of the API keys allowed to call `/v1` |
 | `HTTP_ADDR` | Listen address, default `:8080` |
+| `DISCORD_CLIENT_ID` | Discord application ID. Set it to enable the web dashboard login; the next three are then required |
+| `DISCORD_CLIENT_SECRET` | Discord application OAuth2 secret |
+| `WEB_URL` | Public URL of the dashboard, e.g. `https://happyx.example.com` |
+| `SESSION_SECRET` | At least 32 random characters to sign dashboard sessions (`openssl rand -hex 32`) |
 
 Clients (for now, only the Discord bot) send `Authorization: Bearer <key>`. The API stores only
 the hash, so a leaked config does not leak a usable key. Give each client its own key so it can
@@ -52,7 +56,28 @@ KEY=$(openssl rand -hex 32); echo "key: $KEY"; echo -n "$KEY" | sha256sum
 Put the key in the bot's environment and the hash in `API_KEY_HASHES`. Locally use a git-ignored
 `.env` (see `.env.example`); in production use the host's secret store.
 
-When the web app arrives, users will log in with Discord OAuth2 and only see guilds they administer.
+## Web dashboard
+
+People log in to [HappyX.Web](https://github.com/moixblau/HappyX.Web) with Discord OAuth2 (scopes
+`identify` and `guilds`). The dashboard's nginx forwards `/api/web/...` to this API's `/web/...`,
+so the API itself doesn't need to be public. In the Discord application (OAuth2 > Redirects) add
+`<WEB_URL>/api/web/auth/callback`.
+
+A user sees a server if they are the admin the bot sends reports to, or the owner or an
+Administrator of the server on Discord. Discord permissions are read at login; the session is an
+HMAC-signed HttpOnly cookie that lasts 12 hours and the API keeps no session state. The Discord
+access token is used once at login and never stored. Reports keep the server's anonymity
+setting. Servers a user can't see answer 404, like servers without HappyX.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/web/auth/login` | redirects to Discord |
+| GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
+| POST | `/web/auth/logout` | 204 |
+| GET | `/web/me` | `{user, guilds}`: the logged-in user and the servers they can see |
+| GET | `/web/guilds/{guildID}/report` | same query and body as the `/v1` report |
+
+`/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.
 
 ## API
 

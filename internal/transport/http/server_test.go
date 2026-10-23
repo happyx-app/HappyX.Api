@@ -20,7 +20,7 @@ import (
 
 const key = "test-key"
 
-func newTestServer(t *testing.T) *httptest.Server {
+func newTestServer(t *testing.T, opts ...func(*httpapi.Server)) *httptest.Server {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -37,7 +37,11 @@ func newTestServer(t *testing.T) *httptest.Server {
 	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool),
 		func() time.Time { return time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC) })
 	sum := sha256.Sum256([]byte(key))
-	h := httpapi.NewServer(svc, [][]byte{sum[:]}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	api := httpapi.NewServer(svc, [][]byte{sum[:]}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for _, opt := range opts {
+		opt(api)
+	}
+	h := api.Handler()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv

@@ -18,6 +18,9 @@ type GuildRepository interface {
 	Upsert(ctx context.Context, g domain.Guild) (domain.Guild, error)
 	Get(ctx context.Context, guildID string) (domain.Guild, error)
 	ListActive(ctx context.Context) ([]domain.Guild, error)
+	// ListVisible returns the guilds, active or not, whose admin is userID or whose Discord ID
+	// is in guildIDs.
+	ListVisible(ctx context.Context, userID string, guildIDs []string) ([]domain.Guild, error)
 	// UpdateConfig sets the guild's admin and settings in one write.
 	UpdateConfig(ctx context.Context, guildID, adminID string, s domain.GuildSettings) (domain.Guild, error)
 	Deactivate(ctx context.Context, guildID string) error
