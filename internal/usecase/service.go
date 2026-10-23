@@ -16,14 +16,15 @@ type Service struct {
 	moods      MoodRepository
 	dispatches DispatchRepository
 	kudos      KudosRepository
+	games      GameRepository
 	now        Clock
 }
 
-func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, now Clock) *Service {
+func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, ga GameRepository, now Clock) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{guilds: g, members: m, moods: mo, dispatches: d, kudos: k, now: now}
+	return &Service{guilds: g, members: m, moods: mo, dispatches: d, kudos: k, games: ga, now: now}
 }
 
 // --- Guilds ---
@@ -67,6 +68,7 @@ type SettingsPatch struct {
 	AdminDiscordID  *string
 	// KudosChannelID set to "" goes back to posting where the command is used.
 	KudosChannelID *string
+	GamesEnabled   *bool
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -92,6 +94,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.KudosChannelID != nil {
 		st.KudosChannelID = *p.KudosChannelID
+	}
+	if p.GamesEnabled != nil {
+		st.GamesEnabled = *p.GamesEnabled
 	}
 	if p.AdminDiscordID != nil {
 		g.AdminDiscordID = *p.AdminDiscordID
@@ -233,7 +238,7 @@ func (s *Service) GiveKudos(ctx context.Context, in GiveKudosInput) (domain.Kudo
 // It returns false when it was already sent.
 func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
 	if !kind.Valid() {
-		return false, domain.ValidationError{Reason: "kind must be \"survey\" or \"report\""}
+		return false, domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\" or \"game_guess\""}
 	}
 	if period.IsZero() {
 		return false, domain.ValidationError{Reason: "period is required"}

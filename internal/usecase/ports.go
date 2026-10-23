@@ -21,6 +21,8 @@ type GuildRepository interface {
 	// ListVisible returns the guilds, active or not, whose admin is userID or whose Discord ID
 	// is in guildIDs.
 	ListVisible(ctx context.Context, userID string, guildIDs []string) ([]domain.Guild, error)
+	// ListJoined returns the active guilds where userID is a member taking part (not paused).
+	ListJoined(ctx context.Context, userID string) ([]domain.Guild, error)
 	// UpdateConfig sets the guild's admin and settings in one write.
 	UpdateConfig(ctx context.Context, guildID, adminID string, s domain.GuildSettings) (domain.Guild, error)
 	Deactivate(ctx context.Context, guildID string) error
@@ -57,6 +59,21 @@ type KudosRepository interface {
 	CountGivenOn(ctx context.Context, guildID, giverID string, day time.Time) (int, error)
 	// ListBetween returns the guild's kudos in [from, to], oldest first.
 	ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.Kudos, error)
+}
+
+type GameRepository interface {
+	// CreateRound stores the guild's round for r.Week, or returns the existing one unchanged.
+	CreateRound(ctx context.Context, r domain.GameRound) (domain.GameRound, error)
+	GetRound(ctx context.Context, guildID string, week time.Time) (domain.GameRound, error)
+	// UpsertAnswer stores the member's answer to the round, replacing an earlier one.
+	UpsertAnswer(ctx context.Context, a domain.GameAnswer) (domain.GameAnswer, error)
+	// ListAnswers returns the round's answers by members still taking part, in a random but
+	// stable order, with their usernames.
+	ListAnswers(ctx context.Context, guildID string, week time.Time) ([]domain.GameAnswer, error)
+	// ReplaceGuesses replaces everything guesserID guessed in the round with guesses.
+	ReplaceGuesses(ctx context.Context, guildID string, week time.Time, guesserID string, guesses []domain.GameGuess) error
+	// ListGuesses returns the round's guesses by members still taking part.
+	ListGuesses(ctx context.Context, guildID string, week time.Time) ([]domain.GameGuess, error)
 }
 
 // Clock lets tests control "today".

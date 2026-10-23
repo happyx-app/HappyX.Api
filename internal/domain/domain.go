@@ -16,6 +16,10 @@ var (
 	ErrInactive   = errors.New("guild is inactive")
 	ErrNotAMember = errors.New("user is not an active member of this guild")
 	ErrTooMany    = errors.New("too many requests")
+	// ErrClosed means the action isn't open right now, e.g. answering a game after Wednesday.
+	ErrClosed = errors.New("not open now")
+	// ErrGamesOff means the guild hasn't turned games on.
+	ErrGamesOff = errors.New("games are turned off in this guild")
 )
 
 // ValidationError wraps ErrInvalid with a human readable reason.
@@ -62,6 +66,8 @@ type GuildSettings struct {
 	// KudosChannelID is the channel where kudos cards are posted. Empty means the channel where
 	// the command was used.
 	KudosChannelID string
+	// GamesEnabled turns on the weekly «Who's who?» game. Off by default.
+	GamesEnabled bool
 }
 
 func DefaultGuildSettings() GuildSettings {
@@ -114,9 +120,19 @@ type DispatchKind string
 const (
 	DispatchSurvey DispatchKind = "survey"
 	DispatchReport DispatchKind = "report"
+	// DispatchGame is the week's game question; period is the round's Monday.
+	DispatchGame DispatchKind = "game"
+	// DispatchGameGuess tells members guessing is open; period is the round's Monday.
+	DispatchGameGuess DispatchKind = "game_guess"
 )
 
-func (k DispatchKind) Valid() bool { return k == DispatchSurvey || k == DispatchReport }
+func (k DispatchKind) Valid() bool {
+	switch k {
+	case DispatchSurvey, DispatchReport, DispatchGame, DispatchGameGuess:
+		return true
+	}
+	return false
+}
 
 // Member is a human user of a guild who receives the daily survey.
 type Member struct {
