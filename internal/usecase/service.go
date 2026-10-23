@@ -9,17 +9,18 @@ import (
 )
 
 type Service struct {
-	guilds  GuildRepository
-	members MemberRepository
-	moods   MoodRepository
-	now     Clock
+	guilds     GuildRepository
+	members    MemberRepository
+	moods      MoodRepository
+	dispatches DispatchRepository
+	now        Clock
 }
 
-func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, now Clock) *Service {
+func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, now Clock) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{guilds: g, members: m, moods: mo, now: now}
+	return &Service{guilds: g, members: m, moods: mo, dispatches: d, now: now}
 }
 
 // --- Guilds ---
@@ -98,15 +99,18 @@ func (s *Service) RemoveGuild(ctx context.Context, guildID string) error {
 
 // --- Members ---
 
-func (s *Service) JoinMember(ctx context.Context, guildID, userID, username string) (domain.Member, error) {
+// UpsertMember registers a guild member or refreshes their username. With active nil an
+// existing member keeps their opt-in state (used when syncing the member list); true opts
+// them in (they joined the server or asked to receive the survey again).
+func (s *Service) UpsertMember(ctx context.Context, guildID, userID, username string, active *bool) (domain.Member, error) {
 	if _, err := s.activeGuild(ctx, guildID); err != nil {
 		return domain.Member{}, err
 	}
-	m := domain.Member{GuildDiscordID: guildID, DiscordID: userID, Username: username, Active: true}
+	m := domain.Member{GuildDiscordID: guildID, DiscordID: userID, Username: username}
 	if err := m.Validate(); err != nil {
 		return domain.Member{}, err
 	}
-	return s.members.Upsert(ctx, m)
+	return s.members.Upsert(ctx, m, active)
 }
 
 func (s *Service) LeaveMember(ctx context.Context, guildID, userID string) error {
@@ -164,6 +168,23 @@ func (s *Service) RecordMood(ctx context.Context, in RecordMoodInput) (domain.Mo
 		return domain.MoodEntry{}, err
 	}
 	return s.moods.Upsert(ctx, e)
+}
+
+// --- Dispatches ---
+
+// ClaimDispatch lets the bot reserve sending a survey or report for a period exactly once.
+// It returns false when it was already sent.
+func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
+	if !kind.Valid() {
+		return false, domain.ValidationError{Reason: "kind must be \"survey\" or \"report\""}
+	}
+	if period.IsZero() {
+		return false, domain.ValidationError{Reason: "period is required"}
+	}
+	if _, err := s.activeGuild(ctx, guildID); err != nil {
+		return false, err
+	}
+	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period))
 }
 
 // --- Reports ---

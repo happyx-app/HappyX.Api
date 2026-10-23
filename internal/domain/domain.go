@@ -92,6 +92,16 @@ func (g Guild) Validate() error {
 	return g.Settings.Validate()
 }
 
+// DispatchKind is something the bot sends on a schedule.
+type DispatchKind string
+
+const (
+	DispatchSurvey DispatchKind = "survey"
+	DispatchReport DispatchKind = "report"
+)
+
+func (k DispatchKind) Valid() bool { return k == DispatchSurvey || k == DispatchReport }
+
 // Member is a human user of a guild who receives the daily survey.
 type Member struct {
 	GuildDiscordID string

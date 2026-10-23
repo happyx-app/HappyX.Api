@@ -28,13 +28,13 @@ func testService(t *testing.T, now time.Time) *usecase.Service {
 	}
 	t.Cleanup(pool.Close)
 	reset(t, pool)
-	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool),
+	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool),
 		func() time.Time { return now })
 }
 
 func reset(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -80,7 +80,7 @@ func TestGuildLifecycle(t *testing.T) {
 	if err != nil || len(active) != 0 {
 		t.Fatalf("removed guild still active: %v %v", active, err)
 	}
-	if _, err := svc.JoinMember(ctx, guildA, user1, "u1"); !errors.Is(err, domain.ErrInactive) {
+	if _, err := svc.UpsertMember(ctx, guildA, user1, "u1", nil); !errors.Is(err, domain.ErrInactive) {
 		t.Fatalf("join on inactive guild: want ErrInactive, got %v", err)
 	}
 }
@@ -187,7 +187,58 @@ func mustRegister(t *testing.T, svc *usecase.Service, guild string) {
 
 func mustJoin(t *testing.T, svc *usecase.Service, guild, user string) {
 	t.Helper()
-	if _, err := svc.JoinMember(context.Background(), guild, user, "user"+user[len(user)-1:]); err != nil {
+	if _, err := svc.UpsertMember(context.Background(), guild, user, "user"+user[len(user)-1:], nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClaimDispatchOnce(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	mustRegister(t, svc, guildA)
+	mustRegister(t, svc, guildB)
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+
+	claim := func(guild string, kind domain.DispatchKind) bool {
+		t.Helper()
+		ok, err := svc.ClaimDispatch(ctx, guild, kind, day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if !claim(guildA, domain.DispatchSurvey) {
+		t.Fatal("first claim should succeed")
+	}
+	if claim(guildA, domain.DispatchSurvey) {
+		t.Fatal("second claim for the same day should fail")
+	}
+	if !claim(guildA, domain.DispatchReport) || !claim(guildB, domain.DispatchSurvey) {
+		t.Fatal("claims for another kind or guild are independent")
+	}
+	if _, err := svc.ClaimDispatch(ctx, guildA, "spam", day); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("bad kind: want ErrInvalid, got %v", err)
+	}
+}
+
+func TestSyncKeepsOptOut(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	mustRegister(t, svc, guildA)
+	mustJoin(t, svc, guildA, user1)
+	if err := svc.LeaveMember(ctx, guildA, user1); err != nil {
+		t.Fatal(err)
+	}
+	// A member list sync (active nil) must not re-subscribe them.
+	m, err := svc.UpsertMember(ctx, guildA, user1, "renamed", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Active || m.Username != "renamed" {
+		t.Fatalf("sync should update the name but keep the opt-out: %+v", m)
+	}
+	yes := true
+	if m, err = svc.UpsertMember(ctx, guildA, user1, "renamed", &yes); err != nil || !m.Active {
+		t.Fatalf("explicit opt-in should reactivate: %+v %v", m, err)
 	}
 }

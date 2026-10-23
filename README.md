@@ -65,12 +65,13 @@ When the web app arrives, users will log in with Discord OAuth2 and only see gui
 | PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `admin_discord_user_id` | |
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys, keeps data |
 | GET | `/v1/guilds/{guildID}/members` | | active members |
-| PUT | `/v1/guilds/{guildID}/members/{userID}` | `username` | join or rejoin |
+| PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in |
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out |
 | PUT | `/v1/guilds/{guildID}/members/{userID}/mood` | `mood` (1-5), `message` (optional, ≤500), `day` (optional `YYYY-MM-DD`) | one answer per day; answering again replaces it |
 | GET | `/v1/guilds/{guildID}/report` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` | without a range: last complete week or month |
+| POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent. Makes scheduled sends exactly-once across restarts |
 
-Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild).
+Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, or dispatch already claimed).
 
 ## Development
 

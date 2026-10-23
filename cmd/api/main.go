@@ -41,7 +41,7 @@ func run(log *slog.Logger) error {
 	svc := usecase.NewService(
 		postgres.NewGuildRepo(pool),
 		postgres.NewMemberRepo(pool),
-		postgres.NewMoodRepo(pool),
+		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool),
 		time.Now,
 	)
 	srv := &http.Server{
