@@ -118,6 +118,68 @@ func TestMoodUpsertOnePerDay(t *testing.T) {
 	}
 }
 
+// TestAnswersKeepTheirAnonymity checks that turning anonymity off only names answers given
+// from then on.
+func TestAnswersKeepTheirAnonymity(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	mustRegister(t, svc, guildA)
+	mustJoin(t, svc, guildA, user1)
+	mustJoin(t, svc, guildA, user2)
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+
+	record := func(user, msg string) domain.MoodEntry {
+		t.Helper()
+		e, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user, Mood: domain.MoodGood, Message: msg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	setAnonymous := func(v bool) {
+		t.Helper()
+		if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{Anonymous: &v}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	authors := func() map[string]string {
+		t.Helper()
+		r, err := svc.Report(ctx, guildA, day, day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, m := range r.Messages {
+			out[m.Message] = m.MemberDiscordID
+		}
+		return out
+	}
+
+	if e := record(user1, "before"); !e.Anonymous {
+		t.Fatalf("answer in an anonymous guild not marked anonymous: %+v", e)
+	}
+	setAnonymous(false)
+	if e := record(user2, "after"); e.Anonymous {
+		t.Fatalf("answer in a public guild marked anonymous: %+v", e)
+	}
+	if got := authors(); got["before"] != "" || got["after"] != user2 {
+		t.Fatalf("authors after going public = %v, want only the new answer named", got)
+	}
+
+	// Answering again once the guild is public makes that answer public.
+	record(user1, "before, edited")
+	if got := authors(); got["before, edited"] != user1 {
+		t.Fatalf("authors after re-answering = %v, want user1 named", got)
+	}
+
+	setAnonymous(true)
+	for msg, id := range authors() {
+		if id != "" {
+			t.Fatalf("anonymous guild names the author of %q", msg)
+		}
+	}
+}
+
 // TestGuildIsolation checks that the same Discord user in two servers has two separate
 // histories, and that one guild's data never shows up in another's.
 func TestGuildIsolation(t *testing.T) {

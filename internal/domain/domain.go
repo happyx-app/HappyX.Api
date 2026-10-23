@@ -163,8 +163,11 @@ type MoodEntry struct {
 	Day             time.Time // date only, UTC midnight
 	Mood            Mood
 	Message         string // optional
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// Anonymous records whether the guild was anonymous when the member answered. Such an
+	// answer stays anonymous even if the guild later turns anonymity off.
+	Anonymous bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (e MoodEntry) Validate() error {

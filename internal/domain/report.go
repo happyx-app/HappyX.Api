@@ -51,7 +51,7 @@ type DayStat struct {
 }
 
 // ReportMessage is an optional comment left with a mood. MemberDiscordID is empty when the
-// guild is anonymous.
+// guild is anonymous, or was when the comment was written.
 type ReportMessage struct {
 	Day             time.Time
 	Mood            Mood
@@ -60,7 +60,8 @@ type ReportMessage struct {
 	Username        string
 }
 
-// BuildReport aggregates entries into a report, hiding identities when anonymous.
+// BuildReport aggregates entries into a report, hiding identities when anonymous. An entry
+// only shows its author when the guild is not anonymous now and was not when it was written.
 // usernames maps member Discord IDs to display names.
 func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames map[string]string) Report {
 	r := Report{
@@ -91,7 +92,7 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		perDay[d].sum += int(e.Mood)
 		if e.Message != "" {
 			msg := ReportMessage{Day: d, Mood: e.Mood, Message: e.Message}
-			if !guild.Settings.Anonymous {
+			if !guild.Settings.Anonymous && !e.Anonymous {
 				msg.MemberDiscordID = e.MemberDiscordID
 				msg.Username = usernames[e.MemberDiscordID]
 			}
