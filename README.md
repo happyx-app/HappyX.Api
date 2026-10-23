@@ -75,7 +75,13 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds}`: the logged-in user and the servers they can see |
+| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
 | GET | `/web/guilds/{guildID}/report` | same query and body as the `/v1` report |
+
+Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
+the server: they are the author, so anonymity doesn't hide anything from them. The streak counts
+consecutive days answered up to today in the server's timezone; not having answered yet today
+doesn't break it.
 
 `/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.
 
