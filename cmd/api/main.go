@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // timezone validation must not depend on the image having zoneinfo
 
 	"github.com/moixblau/HappyX.Api/internal/config"
 	"github.com/moixblau/HappyX.Api/internal/repository/postgres"
