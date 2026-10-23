@@ -64,6 +64,10 @@ type Obstacle struct {
 	H    float64 `json:"h"`
 }
 
+// Round obstacles (the fountain and the trees) are circles as wide as their box, so avatars
+// walk around them the way they are drawn.
+func (o Obstacle) Round() bool { return o.Kind == "fountain" || o.Kind == "tree" }
+
 // Obstacles is the square's layout: a fountain in the middle, benches around it and trees in
 // the corners.
 var Obstacles = []Obstacle{
@@ -266,7 +270,7 @@ func (r *Room) Step(dt time.Duration) bool {
 			continue
 		}
 		x0, y0 := p.X, p.Y
-		r.moveTo(p, p.X+dx*step, p.Y+dy*step)
+		r.walk(p, dx, dy, step)
 		if p.X == x0 && p.Y == y0 {
 			p.target = nil // walked into something: stop instead of pushing forever
 		} else {
@@ -274,6 +278,32 @@ func (r *Room) Step(dt time.Duration) bool {
 		}
 	}
 	return moved
+}
+
+// detours are the turns tried, closest first, when the way ahead is blocked.
+var detours = []float64{math.Pi / 6, -math.Pi / 6, math.Pi / 3, -math.Pi / 3}
+
+// walk takes a full step in direction (dx, dy). If something is in the way it turns as little
+// as it can to go around it, so avatars round the fountain instead of crawling along it.
+func (r *Room) walk(p *Player, dx, dy, step float64) {
+	x, y := p.X+dx*step, p.Y+dy*step
+	if inside(x, y) && !blocked(x, y) {
+		p.X, p.Y = x, y
+		return
+	}
+	for _, a := range detours {
+		sin, cos := math.Sincos(a)
+		x, y := p.X+(dx*cos-dy*sin)*step, p.Y+(dx*sin+dy*cos)*step
+		if inside(x, y) && !blocked(x, y) {
+			p.X, p.Y = x, y
+			return
+		}
+	}
+	r.moveTo(p, x, y)
+}
+
+func inside(x, y float64) bool {
+	return x >= Radius && x <= Width-Radius && y >= Radius && y <= Height-Radius
 }
 
 // moveTo moves one axis at a time, so an avatar slides along an obstacle instead of sticking.
@@ -291,6 +321,12 @@ func (r *Room) moveTo(p *Player, x, y float64) bool {
 
 func blocked(x, y float64) bool {
 	for _, o := range Obstacles {
+		if o.Round() {
+			if math.Hypot(x-(o.X+o.W/2), y-(o.Y+o.H/2)) < Radius+o.W/2 {
+				return true
+			}
+			continue
+		}
 		cx, cy := clamp(x, o.X, o.X+o.W), clamp(y, o.Y, o.Y+o.H)
 		if math.Hypot(x-cx, y-cy) < Radius {
 			return true

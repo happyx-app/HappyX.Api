@@ -138,19 +138,13 @@ func TestHubDropsSlowConnections(t *testing.T) {
 	fast := h.Join("g1", Profile{ID: "fast"})
 	defer fast.Close()
 	// fast reads everything; slow reads nothing until its buffer overflows.
-	go func() {
-		for {
-			select {
-			case <-fast.Out():
-			case <-fast.Done():
-				return
-			}
-		}
-	}()
 	for i := 0; i < 2*outBuffer; i++ {
 		h.mu.Lock()
 		h.broadcast(fast.sq, Event{Type: "emote", ID: "fast", Emote: Wave})
 		h.mu.Unlock()
+		for len(fast.Out()) > 0 {
+			<-fast.Out()
+		}
 	}
 	select {
 	case <-slow.Done():

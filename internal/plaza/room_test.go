@@ -168,3 +168,21 @@ func TestLeaveKeepsOrder(t *testing.T) {
 		t.Fatalf("%v", ps)
 	}
 }
+
+func TestWalksAroundTheFountain(t *testing.T) {
+	r := NewRoom()
+	p := joinAt(t, r, "a", 480, 400) // right below the fountain
+	r.Apply("a", Input{Goto: &[2]float64{530, 200}}, t0)
+	for range 60 {
+		r.Step(50 * time.Millisecond)
+	}
+	if p.X != 530 || p.Y != 200 {
+		t.Fatalf("stuck at %v,%v", p.X, p.Y)
+	}
+	// Pushing straight into a wall doesn't slide along it.
+	q := joinAt(t, r, "b", Radius, 300)
+	r.Apply("b", Input{Move: &[2]int{-1, 0}}, t0)
+	if r.Step(time.Second); q.X != Radius || q.Y != 300 {
+		t.Fatalf("wall push moved to %v,%v", q.X, q.Y)
+	}
+}
