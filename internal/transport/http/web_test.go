@@ -235,3 +235,86 @@ func TestWebMyMoods(t *testing.T) {
 		t.Fatalf("reversed range: %d", res.StatusCode)
 	}
 }
+
+func patchSettings(t *testing.T, srv *httptest.Server, c *http.Client, guild, contentType, body string) (int, map[string]any) {
+	t.Helper()
+	req, _ := http.NewRequest("PATCH", srv.URL+"/web/guilds/"+guild+"/settings", strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	res, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out
+}
+
+func TestWebSettings(t *testing.T) {
+	srv := newTestServer(t, func(s *httpapi.Server) {
+		s.WithWeb(httpapi.Web{Identity: fakeDiscord{}, SessionKey: []byte("0123456789abcdef0123456789abcdef"), PublicURL: "http://happyx.test/"})
+	})
+	for _, body := range []string{
+		`{"discord_guild_id":"` + guildA + `","name":"A","admin_discord_user_id":"` + adminA + `"}`,
+		`{"discord_guild_id":"` + guildB + `","name":"B","admin_discord_user_id":"` + adminB + `"}`,
+	} {
+		if code, out := do(t, srv, "POST", "/v1/guilds", key, body); code != 200 {
+			t.Fatalf("register: %d %v", code, out)
+		}
+	}
+	const jsonCT = "application/json"
+
+	if code, _ := patchSettings(t, srv, newWebClient(t), guildA, jsonCT, `{"language":"es"}`); code != 401 {
+		t.Fatalf("no session: %d", code)
+	}
+
+	a := newWebClient(t)
+	login(t, srv, a, "adminA")
+	code, g := patchSettings(t, srv, a, guildA, jsonCT+"; charset=utf-8",
+		`{"language":"es","survey_hour":9,"timezone":"America/Bogota","report_frequency":"monthly","anonymous":false}`)
+	if code != 200 || g["language"] != "es" || g["survey_hour"].(float64) != 9 || g["timezone"] != "America/Bogota" ||
+		g["report_frequency"] != "monthly" || g["anonymous"] != false || g["admin_discord_user_id"] != adminA {
+		t.Fatalf("admin A update: %d %v", code, g)
+	}
+	// The bot sees the change.
+	if code, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 200 || g["language"] != "es" {
+		t.Fatalf("bot view after update: %d %v", code, g)
+	}
+	for _, c := range []struct {
+		name, guild, ct, body string
+		want                  int
+	}{
+		{"another server", guildB, jsonCT, `{"language":"es"}`, 404},
+		{"form post", guildA, "application/x-www-form-urlencoded", `language=es`, 415},
+		{"no content type", guildA, "", `{"language":"es"}`, 415},
+		{"bad hour", guildA, jsonCT, `{"survey_hour":24}`, 400},
+		{"bad timezone", guildA, jsonCT, `{"timezone":"Mars/Olympus"}`, 400},
+		{"changing the report admin", guildA, jsonCT, `{"admin_discord_user_id":"` + adminB + `"}`, 400},
+	} {
+		if code, out := patchSettings(t, srv, a, c.guild, c.ct, c.body); code != c.want {
+			t.Fatalf("%s: got %d (%v), want %d", c.name, code, out, c.want)
+		}
+	}
+
+	// A Discord Administrator of B may change B; a plain member may change nothing.
+	b := newWebClient(t)
+	login(t, srv, b, "managerB")
+	if code, g := patchSettings(t, srv, b, guildB, jsonCT, `{"anonymous":true,"survey_hour":20}`); code != 200 || g["survey_hour"].(float64) != 20 {
+		t.Fatalf("manager B update: %d %v", code, g)
+	}
+	m := newWebClient(t)
+	login(t, srv, m, "member")
+	if code, _ := patchSettings(t, srv, m, guildA, jsonCT, `{"language":"en"}`); code != 404 {
+		t.Fatalf("plain member update: %d", code)
+	}
+
+	// A server whose bot was removed can't be changed.
+	if code, _ := do(t, srv, "DELETE", "/v1/guilds/"+guildA, key, ""); code != 204 {
+		t.Fatalf("remove guild: %d", code)
+	}
+	if code, _ := patchSettings(t, srv, a, guildA, jsonCT, `{"language":"en"}`); code != 409 {
+		t.Fatalf("inactive guild: %d", code)
+	}
+}
