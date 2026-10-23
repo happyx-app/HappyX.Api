@@ -23,6 +23,7 @@ type guildDTO struct {
 	SurveyHour      int       `json:"survey_hour"`
 	ReportFrequency string    `json:"report_frequency"`
 	KudosChannelID  string    `json:"kudos_channel_id"`
+	GamesEnabled    bool      `json:"games_enabled"`
 	Active          bool      `json:"active"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -32,7 +33,7 @@ func toGuildDTO(g domain.Guild) guildDTO {
 		DiscordID: g.DiscordID, Name: g.Name, AdminDiscordID: g.AdminDiscordID,
 		Anonymous: g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency),
-		KudosChannelID: g.Settings.KudosChannelID, Active: g.Active, CreatedAt: g.CreatedAt,
+		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled, Active: g.Active, CreatedAt: g.CreatedAt,
 	}
 }
 
@@ -154,13 +155,14 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 		ReportFrequency *string `json:"report_frequency"`
 		AdminDiscordID  *string `json:"admin_discord_user_id"`
 		KudosChannelID  *string `json:"kudos_channel_id"` // "" clears it
+		GamesEnabled    *bool   `json:"games_enabled"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
-		AdminDiscordID: in.AdminDiscordID, KudosChannelID: in.KudosChannelID,
+		AdminDiscordID: in.AdminDiscordID, KudosChannelID: in.KudosChannelID, GamesEnabled: in.GamesEnabled,
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)

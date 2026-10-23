@@ -22,6 +22,11 @@ const key = "test-key"
 
 func newTestServer(t *testing.T, opts ...func(*httpapi.Server)) *httptest.Server {
 	t.Helper()
+	return newTestServerClock(t, func() time.Time { return time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC) }, opts...)
+}
+
+func newTestServerClock(t *testing.T, now usecase.Clock, opts ...func(*httpapi.Server)) *httptest.Server {
+	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("TEST_DATABASE_URL not set")
@@ -31,11 +36,10 @@ func newTestServer(t *testing.T, opts ...func(*httpapi.Server)) *httptest.Server
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches, kudos RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches, kudos, game_rounds, game_answers, game_guesses RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool),
-		func() time.Time { return time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC) })
+	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool), postgres.NewGameRepo(pool), now)
 	sum := sha256.Sum256([]byte(key))
 	api := httpapi.NewServer(svc, [][]byte{sum[:]}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	for _, opt := range opts {

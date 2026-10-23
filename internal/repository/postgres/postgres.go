@@ -75,13 +75,13 @@ type GuildRepo struct{ db *pgxpool.Pool }
 func NewGuildRepo(db *pgxpool.Pool) *GuildRepo { return &GuildRepo{db: db} }
 
 const guildCols = `discord_id, name, admin_discord_id, anonymous, timezone, survey_hour,
-	report_frequency, language, kudos_channel_id, active, created_at, updated_at`
+	report_frequency, language, kudos_channel_id, games_enabled, active, created_at, updated_at`
 
 func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var g domain.Guild
 	var freq string
 	err := row.Scan(&g.DiscordID, &g.Name, &g.AdminDiscordID, &g.Settings.Anonymous,
-		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &g.Active, &g.CreatedAt, &g.UpdatedAt)
 	g.Settings.ReportFrequency = domain.ReportFrequency(freq)
 	return g, notFound(err)
 }
@@ -114,6 +114,12 @@ func (r *GuildRepo) ListVisible(ctx context.Context, userID string, guildIDs []s
 		WHERE admin_discord_id = $1 OR discord_id = ANY($2) ORDER BY name, id`, userID, guildIDs)
 }
 
+func (r *GuildRepo) ListJoined(ctx context.Context, userID string) ([]domain.Guild, error) {
+	return r.list(ctx, `SELECT `+guildCols+` FROM guilds
+		WHERE active AND id IN (SELECT guild_id FROM members WHERE discord_id = $1 AND active)
+		ORDER BY name, id`, userID)
+}
+
 func (r *GuildRepo) list(ctx context.Context, sql string, args ...any) ([]domain.Guild, error) {
 	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {
@@ -134,10 +140,10 @@ func (r *GuildRepo) list(ctx context.Context, sql string, args ...any) ([]domain
 func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s domain.GuildSettings) (domain.Guild, error) {
 	return scanGuild(r.db.QueryRow(ctx, `
 		UPDATE guilds SET admin_discord_id = $2, anonymous = $3, timezone = $4, survey_hour = $5,
-		       report_frequency = $6, language = $7, kudos_channel_id = $8, updated_at = now()
+		       report_frequency = $6, language = $7, kudos_channel_id = $8, games_enabled = $9, updated_at = now()
 		WHERE discord_id = $1
 		RETURNING `+guildCols,
-		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID))
+		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID, s.GamesEnabled))
 }
 
 func (r *GuildRepo) Deactivate(ctx context.Context, guildID string) error {
@@ -363,6 +369,158 @@ func (r *KudosRepo) ListBetween(ctx context.Context, guildID string, from, to ti
 			return nil, err
 		}
 		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+// --- Games ---
+
+type GameRepo struct{ db *pgxpool.Pool }
+
+func NewGameRepo(db *pgxpool.Pool) *GameRepo { return &GameRepo{db: db} }
+
+// Every game query reaches the round through its guild's Discord ID, and members through that
+// same guild, so answers and guesses can never cross guilds.
+
+func (r *GameRepo) CreateRound(ctx context.Context, rd domain.GameRound) (domain.GameRound, error) {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO game_rounds (guild_id, week, question)
+		SELECT id, $2, $3 FROM guilds WHERE discord_id = $1
+		ON CONFLICT (guild_id, week) DO NOTHING`, rd.GuildDiscordID, rd.Week, rd.Question)
+	if err != nil {
+		return domain.GameRound{}, err
+	}
+	return r.GetRound(ctx, rd.GuildDiscordID, rd.Week)
+}
+
+func (r *GameRepo) GetRound(ctx context.Context, guildID string, week time.Time) (domain.GameRound, error) {
+	var rd domain.GameRound
+	err := r.db.QueryRow(ctx, `
+		SELECT g.discord_id, rd.week, rd.question, rd.created_at
+		FROM game_rounds rd JOIN guilds g ON g.id = rd.guild_id
+		WHERE g.discord_id = $1 AND rd.week = $2`, guildID, week).
+		Scan(&rd.GuildDiscordID, &rd.Week, &rd.Question, &rd.CreatedAt)
+	rd.Week = domain.TruncateDay(rd.Week)
+	return rd, notFound(err)
+}
+
+const gameAnswerCols = `a.ref::text, g.discord_id, rd.week, m.discord_id, m.username, a.answer, a.created_at, a.updated_at`
+
+func scanGameAnswer(row pgx.Row) (domain.GameAnswer, error) {
+	var a domain.GameAnswer
+	err := row.Scan(&a.ID, &a.GuildDiscordID, &a.Week, &a.MemberDiscordID, &a.Username, &a.Text, &a.CreatedAt, &a.UpdatedAt)
+	a.Week = domain.TruncateDay(a.Week)
+	return a, notFound(err)
+}
+
+func (r *GameRepo) UpsertAnswer(ctx context.Context, a domain.GameAnswer) (domain.GameAnswer, error) {
+	return scanGameAnswer(r.db.QueryRow(ctx, `
+		WITH t AS (
+		         SELECT rd.id AS round_id, m.id AS member_id
+		         FROM game_rounds rd
+		         JOIN guilds g ON g.id = rd.guild_id
+		         JOIN members m ON m.guild_id = g.id AND m.discord_id = $3
+		         WHERE g.discord_id = $1 AND rd.week = $2
+		     ),
+		     a AS (
+		         INSERT INTO game_answers (round_id, member_id, answer)
+		         SELECT round_id, member_id, $4 FROM t
+		         ON CONFLICT (round_id, member_id) DO UPDATE
+		         SET answer = EXCLUDED.answer, updated_at = now()
+		         RETURNING *
+		     )
+		SELECT `+gameAnswerCols+`
+		FROM a
+		JOIN game_rounds rd ON rd.id = a.round_id
+		JOIN guilds g ON g.id = rd.guild_id
+		JOIN members m ON m.id = a.member_id`,
+		a.GuildDiscordID, a.Week, a.MemberDiscordID, a.Text))
+}
+
+func (r *GameRepo) ListAnswers(ctx context.Context, guildID string, week time.Time) ([]domain.GameAnswer, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT `+gameAnswerCols+`
+		FROM game_answers a
+		JOIN game_rounds rd ON rd.id = a.round_id
+		JOIN guilds g ON g.id = rd.guild_id
+		JOIN members m ON m.id = a.member_id AND m.guild_id = g.id
+		WHERE g.discord_id = $1 AND rd.week = $2 AND m.active
+		ORDER BY a.ref`, guildID, week)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.GameAnswer
+	for rows.Next() {
+		a, err := scanGameAnswer(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (r *GameRepo) ReplaceGuesses(ctx context.Context, guildID string, week time.Time, guesserID string, guesses []domain.GameGuess) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
+	var roundID, guildPK, guesserPK int64
+	err = tx.QueryRow(ctx, `
+		SELECT rd.id, g.id, m.id
+		FROM game_rounds rd
+		JOIN guilds g ON g.id = rd.guild_id
+		JOIN members m ON m.guild_id = g.id AND m.discord_id = $3
+		WHERE g.discord_id = $1 AND rd.week = $2`, guildID, week, guesserID).Scan(&roundID, &guildPK, &guesserPK)
+	if err != nil {
+		return notFound(err)
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM game_guesses WHERE guesser_member_id = $1
+		AND answer_id IN (SELECT id FROM game_answers WHERE round_id = $2)`, guesserPK, roundID); err != nil {
+		return err
+	}
+	for _, gs := range guesses {
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO game_guesses (answer_id, guesser_member_id, guessed_member_id)
+			SELECT a.id, $3, m.id
+			FROM game_answers a
+			JOIN members m ON m.guild_id = $4 AND m.discord_id = $5
+			WHERE a.round_id = $1 AND a.ref::text = $2`, roundID, gs.AnswerID, guesserPK, guildPK, gs.GuessedDiscordID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return domain.ErrNotFound
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *GameRepo) ListGuesses(ctx context.Context, guildID string, week time.Time) ([]domain.GameGuess, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT gm.discord_id, a.ref::text, tm.discord_id
+		FROM game_guesses gs
+		JOIN game_answers a ON a.id = gs.answer_id
+		JOIN game_rounds rd ON rd.id = a.round_id
+		JOIN guilds g ON g.id = rd.guild_id
+		JOIN members gm ON gm.id = gs.guesser_member_id AND gm.guild_id = g.id
+		JOIN members tm ON tm.id = gs.guessed_member_id AND tm.guild_id = g.id
+		WHERE g.discord_id = $1 AND rd.week = $2 AND gm.active
+		ORDER BY gs.created_at, a.id`, guildID, week)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.GameGuess
+	for rows.Next() {
+		var gs domain.GameGuess
+		if err := rows.Scan(&gs.GuesserDiscordID, &gs.AnswerID, &gs.GuessedDiscordID); err != nil {
+			return nil, err
+		}
+		out = append(out, gs)
 	}
 	return out, rows.Err()
 }

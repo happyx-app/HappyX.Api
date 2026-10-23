@@ -59,6 +59,9 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/me/moods", s.requireViewer(s.webMyMoods))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
+	mux.Handle("GET /web/guilds/{guildID}/game", s.requireViewer(s.webGame))
+	mux.Handle("PUT /web/guilds/{guildID}/game/answer", s.requireViewer(s.webAnswerGame))
+	mux.Handle("PUT /web/guilds/{guildID}/game/guesses", s.requireViewer(s.webGuessGame))
 }
 
 func (s *Server) secureCookies() bool { return strings.HasPrefix(s.web.PublicURL, "https://") }
@@ -147,12 +150,26 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 		s.fail(w, r, err)
 		return
 	}
+	games, err := s.svc.GameGuilds(r.Context(), v)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	// Games are open to every member, so they only name the server, not its settings.
+	type gameGuildDTO struct {
+		DiscordID string `json:"discord_guild_id"`
+		Name      string `json:"name"`
+	}
 	out := struct {
-		User   viewerDTO  `json:"user"`
-		Guilds []guildDTO `json:"guilds"`
-	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []guildDTO{}}
+		User   viewerDTO      `json:"user"`
+		Guilds []guildDTO     `json:"guilds"`
+		Games  []gameGuildDTO `json:"games"`
+	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []guildDTO{}, []gameGuildDTO{}}
 	for _, g := range gs {
 		out.Guilds = append(out.Guilds, toGuildDTO(g))
+	}
+	for _, g := range games {
+		out.Games = append(out.Games, gameGuildDTO{g.DiscordID, g.Name})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -170,10 +187,7 @@ func (s *Server) webReport(w http.ResponseWriter, r *http.Request, v domain.View
 // bot's /happyx config, except who receives the reports. Only people who can see the server's
 // dashboard may change them.
 func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
-	// A JSON body can't be sent cross-site without a CORS preflight, which this API never
-	// grants; together with the SameSite cookie this keeps other sites from changing settings.
-	if ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(ct) != "application/json" {
-		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+	if !requireJSON(w, r) {
 		return
 	}
 	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"))
@@ -187,11 +201,15 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		Language        *string `json:"language"`
 		SurveyHour      *int    `json:"survey_hour"`
 		ReportFrequency *string `json:"report_frequency"`
+		GamesEnabled    *bool   `json:"games_enabled"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	p := usecase.SettingsPatch{Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour}
+	p := usecase.SettingsPatch{
+		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
+		GamesEnabled: in.GamesEnabled,
+	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)
 		p.ReportFrequency = &f
@@ -203,6 +221,17 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	}
 	s.log.Info("settings changed from the dashboard", "guild", g.DiscordID, "by", v.DiscordID)
 	writeJSON(w, http.StatusOK, toGuildDTO(g))
+}
+
+// requireJSON guards the dashboard's writes. A JSON body can't be sent cross-site without a CORS
+// preflight, which this API never grants; together with the SameSite cookie this keeps other
+// sites from writing on a viewer's behalf.
+func requireJSON(w http.ResponseWriter, r *http.Request) bool {
+	if ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(ct) != "application/json" {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return false
+	}
+	return true
 }
 
 type evolutionDTO struct {

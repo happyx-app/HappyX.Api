@@ -43,7 +43,7 @@ func run(log *slog.Logger) error {
 	svc := usecase.NewService(
 		postgres.NewGuildRepo(pool),
 		postgres.NewMemberRepo(pool),
-		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool),
+		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool), postgres.NewGameRepo(pool),
 		time.Now,
 	)
 	api := httpapi.NewServer(svc, cfg.ServiceKeyHashes, log)

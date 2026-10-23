@@ -17,6 +17,11 @@ import (
 // postgres://postgres:test@localhost:55432/happyx_test?sslmode=disable
 func testService(t *testing.T, now time.Time) *usecase.Service {
 	t.Helper()
+	return testServiceClock(t, func() time.Time { return now })
+}
+
+func testServiceClock(t *testing.T, now usecase.Clock) *usecase.Service {
+	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("TEST_DATABASE_URL not set")
@@ -28,13 +33,12 @@ func testService(t *testing.T, now time.Time) *usecase.Service {
 	}
 	t.Cleanup(pool.Close)
 	reset(t, pool)
-	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool),
-		func() time.Time { return now })
+	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool), NewGameRepo(pool), now)
 }
 
 func reset(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches, kudos RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches, kudos, game_rounds, game_answers, game_guesses RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 }

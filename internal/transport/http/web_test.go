@@ -39,6 +39,9 @@ func (fakeDiscord) Viewer(_ context.Context, code string) (domain.Viewer, error)
 	case "managerB":
 		return domain.Viewer{DiscordID: managerB, Username: "Bea", ManagedGuilds: []string{guildB, "100000000000000077"}}, nil
 	}
+	if id, ok := strings.CutPrefix(code, "user:"); ok {
+		return domain.Viewer{DiscordID: id, Username: "user" + id[len(id)-1:]}, nil
+	}
 	return domain.Viewer{}, errors.New("bad code")
 }
 

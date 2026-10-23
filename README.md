@@ -39,6 +39,16 @@ anonymity back on hides every author again.
 Kudos are the exception: they are public thanks posted in the server with both names, so reports
 list them with names whatever the setting.
 
+### «Who's who?» game
+
+A weekly icebreaker, off by default (`games_enabled`). On Monday the bot sends every member who
+takes part a question in the guild's language and starts the round (`POST .../game/rounds`).
+Members answer until Wednesday, from the DM or the web. From Thursday to Sunday they guess on the
+web who wrote each answer; a round needs at least 3 answers. The authors and the ranking (most
+right guesses, then fewest guesses) come out once the week is over, so game answers are never
+anonymous and members are told so. Members who paused HappyX in the guild don't get the question,
+can't play, and their answers and guesses drop out of the round.
+
 ## Credentials
 
 All secrets come from environment variables; nothing is read from files in the repo.
@@ -82,10 +92,13 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/auth/login` | redirects to Discord |
 | GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
 | POST | `/web/auth/logout` | 204 |
-| GET | `/web/me` | `{user, guilds}`: the logged-in user and the servers they can see |
+| GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see, and the servers where they can play (`discord_guild_id`, `name`) |
 | GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
 | GET | `/web/guilds/{guildID}/report` | same query and body as the `/v1` report |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
+| GET | `/web/guilds/{guildID}/game` | `{current, previous}`: this week's round and last week's, as the member sees them (authors only once finished). 404 unless games are on and the user takes part |
+| PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
+| PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
 the server: they are the author, so anonymity doesn't hide anything from them. The streak counts
@@ -102,7 +115,7 @@ doesn't break it.
 | GET | `/v1/guilds` | | active guilds (for the bot's scheduler) |
 | POST | `/v1/guilds` | `discord_guild_id`, `name`, `admin_discord_user_id` | register on join; idempotent, keeps settings |
 | GET | `/v1/guilds/{guildID}` | | |
-| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it) | |
+| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it), `games_enabled` | |
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys, keeps data |
 | GET | `/v1/guilds/{guildID}/members` | | active members |
 | PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in |
@@ -110,9 +123,12 @@ doesn't break it.
 | PUT | `/v1/guilds/{guildID}/members/{userID}/mood` | `mood` (1-5), `message` (optional, ≤500), `day` (optional `YYYY-MM-DD`) | one answer per day; answering again replaces it |
 | GET | `/v1/guilds/{guildID}/report` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` | without a range: last complete week or month |
 | POST | `/v1/guilds/{guildID}/kudos` | `from_discord_user_id`, `to_discord_user_id`, `message` (1-300) | 201 with the kudos and both usernames. Both must be known members (paused is fine), not the same person; at most 10 per giver per day (429) |
-| POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent. Makes scheduled sends exactly-once across restarts |
+| POST | `/v1/guilds/{guildID}/game/rounds` | `week` (a Monday, `YYYY-MM-DD`), `question` (1-300) | starts the week's round, Monday to Wednesday; idempotent (keeps the first question). 409 when games are off or answering is over |
+| GET | `/v1/guilds/{guildID}/game/rounds/{week}` | | `phase` (`answering`/`guessing`/`finished`), `answers` count, `guessing_starts`, `last_day` |
+| PUT | `/v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}` | `answer` (1-200) | replaces an earlier answer. 403 for paused members, 409 once answering is over |
+| POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`/`game`/`game_guess`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent. Makes scheduled sends exactly-once across restarts |
 
-Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, or dispatch already claimed), 429 (kudos limit).
+Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, dispatch already claimed, games off or game step closed), 429 (kudos limit).
 
 The report also has `kudos`: `count`, `givers`, `receivers` and up to five `highlights` (the
 latest, newest first, each with `day`, both IDs and usernames, `message` and `created_at`).
