@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/moixblau/HappyX.Api/internal/usecase"
 )
 
 // The web dashboard's routes live under /web. The dashboard's nginx forwards
@@ -57,6 +58,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/me", s.requireViewer(s.webMe))
 	mux.Handle("GET /web/me/moods", s.requireViewer(s.webMyMoods))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
+	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
 }
 
 func (s *Server) secureCookies() bool { return strings.HasPrefix(s.web.PublicURL, "https://") }
@@ -162,6 +164,45 @@ func (s *Server) webReport(w http.ResponseWriter, r *http.Request, v domain.View
 		return
 	}
 	s.writeReport(w, r, g)
+}
+
+// webUpdateSettings changes a server's settings from the dashboard: the same options as the
+// bot's /happyx config, except who receives the reports. Only people who can see the server's
+// dashboard may change them.
+func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	// A JSON body can't be sent cross-site without a CORS preflight, which this API never
+	// grants; together with the SameSite cookie this keeps other sites from changing settings.
+	if ct, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(ct) != "application/json" {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return
+	}
+	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	var in struct {
+		Anonymous       *bool   `json:"anonymous"`
+		Timezone        *string `json:"timezone"`
+		Language        *string `json:"language"`
+		SurveyHour      *int    `json:"survey_hour"`
+		ReportFrequency *string `json:"report_frequency"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	p := usecase.SettingsPatch{Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour}
+	if in.ReportFrequency != nil {
+		f := domain.ReportFrequency(*in.ReportFrequency)
+		p.ReportFrequency = &f
+	}
+	g, err = s.svc.UpdateGuildSettings(r.Context(), g.DiscordID, p)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("settings changed from the dashboard", "guild", g.DiscordID, "by", v.DiscordID)
+	writeJSON(w, http.StatusOK, toGuildDTO(g))
 }
 
 type evolutionDTO struct {
