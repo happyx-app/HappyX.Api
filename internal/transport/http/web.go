@@ -209,6 +209,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		SurveyHour      *int    `json:"survey_hour"`
 		ReportFrequency *string `json:"report_frequency"`
 		GamesEnabled    *bool   `json:"games_enabled"`
+		WorkingDays     *[]int  `json:"working_days"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -220,6 +221,9 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)
 		p.ReportFrequency = &f
+	}
+	if !s.patchWorkingDays(w, r, in.WorkingDays, &p) {
+		return
 	}
 	g, err = s.svc.UpdateGuildSettings(r.Context(), g.DiscordID, p)
 	if err != nil {

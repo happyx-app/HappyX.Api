@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestBuildEvolution(t *testing.T) {
 	g := Guild{DiscordID: "100000000000000001"}
@@ -29,5 +32,21 @@ func TestBuildEvolution(t *testing.T) {
 	}
 	if ev := BuildEvolution(g, nil, from, to, day("2026-10-22")); ev.Responses != 0 || ev.Average != 0 || ev.Streak != 0 {
 		t.Fatalf("no answers: %+v", ev)
+	}
+
+	// Weekends are off by default: answering Friday and Monday keeps the streak going.
+	weekend := []MoodEntry{entry("2026-10-22", 3), entry("2026-10-23", 3), entry("2026-10-26", 4)}
+	if ev := BuildEvolution(g, weekend, from, to, day("2026-10-26")); ev.Streak != 3 {
+		t.Fatalf("weekend breaks the streak: got %d, want 3", ev.Streak)
+	}
+	// An answer given on a day off still counts.
+	weekend = append(weekend, entry("2026-10-25", 4))
+	if ev := BuildEvolution(g, weekend, from, to, day("2026-10-26")); ev.Streak != 4 {
+		t.Fatalf("answer on a day off: got %d, want 4", ev.Streak)
+	}
+	// When Saturday is a working day, missing it breaks the streak.
+	g.Settings.WorkingDays = MondayToFriday | 1<<time.Saturday
+	if ev := BuildEvolution(g, weekend, from, to, day("2026-10-26")); ev.Streak != 2 {
+		t.Fatalf("missed working Saturday: got %d, want 2", ev.Streak)
 	}
 }

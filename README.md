@@ -40,6 +40,12 @@ anonymity back on hides every author again.
 Kudos are the exception: they are public thanks posted in the server with both names, so reports
 list them with names whatever the setting.
 
+### Working days
+
+Each guild has working days (`working_days`, Monday to Friday by default). The bot only sends the
+daily survey on those days. Reports leave out non-working days unless someone answered on one, and
+a member's streak isn't broken by them.
+
 ### «Who's who?» game
 
 A weekly icebreaker, off by default (`games_enabled`). On Monday the bot sends every member who
@@ -100,7 +106,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
 | GET | `/web/guilds/{guildID}/plaza` | WebSocket into the server's square (below). 404 unless games are on and the user takes part |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`, `working_days`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
 the server: they are the author, so anonymity doesn't hide anything from them. The streak counts
@@ -144,7 +150,7 @@ Close codes: 4000 opened elsewhere, 4001 too slow, 1001 the API is shutting down
 | GET | `/v1/guilds` | | active guilds (for the bot's scheduler) |
 | POST | `/v1/guilds` | `discord_guild_id`, `name`, `admin_discord_user_id` | register on join; idempotent, keeps settings |
 | GET | `/v1/guilds/{guildID}` | | |
-| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it), `games_enabled` | |
+| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`) | |
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys, keeps data |
 | GET | `/v1/guilds/{guildID}/members` | | active members |
 | PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in |

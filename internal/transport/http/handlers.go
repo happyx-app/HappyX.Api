@@ -24,6 +24,7 @@ type guildDTO struct {
 	ReportFrequency string    `json:"report_frequency"`
 	KudosChannelID  string    `json:"kudos_channel_id"`
 	GamesEnabled    bool      `json:"games_enabled"`
+	WorkingDays     []int     `json:"working_days"` // ISO days, 1 is Monday and 7 Sunday
 	Active          bool      `json:"active"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -33,7 +34,8 @@ func toGuildDTO(g domain.Guild) guildDTO {
 		DiscordID: g.DiscordID, Name: g.Name, AdminDiscordID: g.AdminDiscordID,
 		Anonymous: g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency),
-		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled, Active: g.Active, CreatedAt: g.CreatedAt,
+		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled,
+		WorkingDays: g.Settings.WorkingDays.ISO(), Active: g.Active, CreatedAt: g.CreatedAt,
 	}
 }
 
@@ -156,6 +158,7 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 		AdminDiscordID  *string `json:"admin_discord_user_id"`
 		KudosChannelID  *string `json:"kudos_channel_id"` // "" clears it
 		GamesEnabled    *bool   `json:"games_enabled"`
+		WorkingDays     *[]int  `json:"working_days"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -167,6 +170,9 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)
 		p.ReportFrequency = &f
+	}
+	if !s.patchWorkingDays(w, r, in.WorkingDays, &p) {
+		return
 	}
 	g, err := s.svc.UpdateGuildSettings(r.Context(), r.PathValue("guildID"), p)
 	if err != nil {
@@ -365,4 +371,19 @@ func (s *Server) claimDispatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"kind": in.Kind, "period": in.Period})
+}
+
+// patchWorkingDays turns the ISO day numbers of a settings change into p.WorkingDays, and
+// answers 400 if they are not valid.
+func (s *Server) patchWorkingDays(w http.ResponseWriter, r *http.Request, iso *[]int, p *usecase.SettingsPatch) bool {
+	if iso == nil {
+		return true
+	}
+	days, err := domain.WeekdaysOf(*iso)
+	if err != nil {
+		s.fail(w, r, err)
+		return false
+	}
+	p.WorkingDays = &days
+	return true
 }

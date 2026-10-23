@@ -103,9 +103,14 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 	if r.Responses > 0 {
 		r.Average = float64(total) / float64(r.Responses)
 	}
+	// Non-working days only show up when someone answered anyway.
 	for d := TruncateDay(from); !d.After(TruncateDay(to)); d = d.AddDate(0, 0, 1) {
+		a := perDay[d]
+		if a == nil && !guild.Settings.IsWorkingDay(d) {
+			continue
+		}
 		ds := DayStat{Day: d}
-		if a := perDay[d]; a != nil {
+		if a != nil {
 			ds.Responses = a.n
 			ds.Average = float64(a.sum) / float64(a.n)
 		}
