@@ -153,18 +153,20 @@ func scanMember(row pgx.Row) (domain.Member, error) {
 	return m, notFound(err)
 }
 
-func (r *MemberRepo) Upsert(ctx context.Context, m domain.Member) (domain.Member, error) {
+func (r *MemberRepo) Upsert(ctx context.Context, m domain.Member, setActive *bool) (domain.Member, error) {
 	return scanMember(r.db.QueryRow(ctx, `
 		WITH g AS (SELECT id, discord_id FROM guilds WHERE discord_id = $1),
 		     m AS (
-		         INSERT INTO members (guild_id, discord_id, username)
-		         SELECT g.id, $2, $3 FROM g
+		         INSERT INTO members (guild_id, discord_id, username, active)
+		         SELECT g.id, $2, $3, COALESCE($4::boolean, TRUE) FROM g
 		         ON CONFLICT (guild_id, discord_id) DO UPDATE
-		         SET username = EXCLUDED.username, active = TRUE, updated_at = now()
+		         SET username = EXCLUDED.username,
+		             active = COALESCE($4::boolean, members.active),
+		             updated_at = now()
 		         RETURNING *
 		     )
 		SELECT `+memberCols+` FROM m JOIN g ON g.id = m.guild_id`,
-		m.GuildDiscordID, m.DiscordID, m.Username))
+		m.GuildDiscordID, m.DiscordID, m.Username, setActive))
 }
 
 func (r *MemberRepo) Get(ctx context.Context, guildID, userID string) (domain.Member, error) {
@@ -265,4 +267,21 @@ func (r *MoodRepo) ListBetween(ctx context.Context, guildID string, from, to tim
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// --- Dispatches ---
+
+type DispatchRepo struct{ db *pgxpool.Pool }
+
+func NewDispatchRepo(db *pgxpool.Pool) *DispatchRepo { return &DispatchRepo{db: db} }
+
+func (r *DispatchRepo) Claim(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
+	tag, err := r.db.Exec(ctx, `
+		INSERT INTO dispatches (guild_id, kind, period)
+		SELECT id, $2, $3 FROM guilds WHERE discord_id = $1
+		ON CONFLICT DO NOTHING`, guildID, string(kind), period)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }

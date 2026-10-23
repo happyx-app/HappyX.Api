@@ -24,10 +24,19 @@ type GuildRepository interface {
 }
 
 type MemberRepository interface {
-	Upsert(ctx context.Context, m domain.Member) (domain.Member, error)
+	// Upsert creates the member (active unless setActive says otherwise) or updates its
+	// username. An existing member's active flag only changes when setActive is non-nil, so a
+	// bulk sync never re-subscribes someone who opted out.
+	Upsert(ctx context.Context, m domain.Member, setActive *bool) (domain.Member, error)
 	Get(ctx context.Context, guildID, userID string) (domain.Member, error)
 	ListActive(ctx context.Context, guildID string) ([]domain.Member, error)
 	Deactivate(ctx context.Context, guildID, userID string) error
+}
+
+type DispatchRepository interface {
+	// Claim records that kind was sent to the guild for period. It returns false if it
+	// had already been claimed.
+	Claim(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error)
 }
 
 type MoodRepository interface {

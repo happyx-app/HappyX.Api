@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // timezone validation must not depend on the image having zoneinfo
 
 	"github.com/moixblau/HappyX.Api/internal/config"
 	"github.com/moixblau/HappyX.Api/internal/repository/postgres"
@@ -41,7 +42,7 @@ func run(log *slog.Logger) error {
 	svc := usecase.NewService(
 		postgres.NewGuildRepo(pool),
 		postgres.NewMemberRepo(pool),
-		postgres.NewMoodRepo(pool),
+		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool),
 		time.Now,
 	)
 	srv := &http.Server{

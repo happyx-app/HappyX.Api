@@ -44,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /v1/guilds/{guildID}/members/{userID}", s.leaveMember)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}/mood", s.recordMood)
 	api.HandleFunc("GET /v1/guilds/{guildID}/report", s.report)
+	api.HandleFunc("POST /v1/guilds/{guildID}/dispatches", s.claimDispatch)
 	mux.Handle("/v1/", s.requireKey(api))
 
 	return s.logRequests(mux)

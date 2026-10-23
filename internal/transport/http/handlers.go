@@ -37,6 +37,7 @@ func toGuildDTO(g domain.Guild) guildDTO {
 type memberDTO struct {
 	DiscordID string    `json:"discord_user_id"`
 	Username  string    `json:"username"`
+	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -162,7 +163,7 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]memberDTO, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, memberDTO{DiscordID: m.DiscordID, Username: m.Username, CreatedAt: m.CreatedAt})
+		out = append(out, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -170,16 +171,18 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) joinMember(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Username string `json:"username"`
+		// Active is optional: omitted keeps an existing member's opt-in state.
+		Active *bool `json:"active"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	m, err := s.svc.JoinMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID"), in.Username)
+	m, err := s.svc.UpsertMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID"), in.Username, in.Active)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, memberDTO{DiscordID: m.DiscordID, Username: m.Username, CreatedAt: m.CreatedAt})
+	writeJSON(w, http.StatusOK, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt})
 }
 
 func (s *Server) leaveMember(w http.ResponseWriter, r *http.Request) {
@@ -270,4 +273,33 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// --- Dispatches ---
+
+// claimDispatch answers 201 when the caller should send the survey or report for that period,
+// and 409 when it was already sent.
+func (s *Server) claimDispatch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Kind   string `json:"kind"`
+		Period string `json:"period"` // YYYY-MM-DD: the survey day, or the first day of the report period
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	period, err := time.Parse(dateLayout, in.Period)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "period must be YYYY-MM-DD")
+		return
+	}
+	claimed, err := s.svc.ClaimDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(in.Kind), period)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if !claimed {
+		writeError(w, http.StatusConflict, "already dispatched")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"kind": in.Kind, "period": in.Period})
 }

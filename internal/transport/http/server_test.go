@@ -31,10 +31,10 @@ func newTestServer(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, members, mood_entries, dispatches RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool),
+	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool),
 		func() time.Time { return time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC) })
 	sum := sha256.Sum256([]byte(key))
 	h := httpapi.NewServer(svc, [][]byte{sum[:]}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
@@ -86,6 +86,8 @@ func TestMoodFlow(t *testing.T) {
 		{"PUT", "/v1/guilds/" + g + "/members/" + u + "/mood", `{"mood":9}`, 400},
 		{"PATCH", "/v1/guilds/" + g, `{"survey_hour":25}`, 400},
 		{"GET", "/v1/guilds/999999999999999999", ``, 404},
+		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 201},
+		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 409},
 	}
 	for _, s := range steps {
 		if code, body := do(t, srv, s.method, s.path, key, s.body); code != s.want {

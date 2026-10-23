@@ -10,7 +10,7 @@ import (
 func TestLastPeriod(t *testing.T) {
 	// Thursday 2026-10-22, 23:30 UTC is already Friday in Madrid.
 	now := time.Date(2026, 10, 22, 23, 30, 0, 0, time.UTC)
-	svc := NewService(nil, nil, nil, func() time.Time { return now })
+	svc := NewService(nil, nil, nil, nil, func() time.Time { return now })
 
 	g := domain.Guild{Settings: domain.DefaultGuildSettings()}
 	from, to := svc.LastPeriod(g)
