@@ -90,3 +90,20 @@ func TestBuildReport(t *testing.T) {
 		t.Fatalf("named report missing identity: %+v", r.Messages)
 	}
 }
+
+func TestLanguageValidation(t *testing.T) {
+	for _, ok := range []string{"en", "es", "ca", "pt-BR", "ast"} {
+		s := DefaultGuildSettings()
+		s.Language = ok
+		if err := s.Validate(); err != nil {
+			t.Errorf("%q rejected: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "e", "EN", "en-us", "en_US", "english", "e1"} {
+		s := DefaultGuildSettings()
+		s.Language = bad
+		if err := s.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}

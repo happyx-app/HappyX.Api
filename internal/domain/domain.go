@@ -55,6 +55,9 @@ type GuildSettings struct {
 	Timezone        string
 	SurveyHour      int // 0-23, local to Timezone
 	ReportFrequency ReportFrequency
+	// Language is the code of the language the bot speaks in this guild, e.g. "en" or "pt-BR".
+	// The API only checks its shape; the bot decides which languages it supports.
+	Language string
 }
 
 func DefaultGuildSettings() GuildSettings {
@@ -63,6 +66,7 @@ func DefaultGuildSettings() GuildSettings {
 		Timezone:        "Europe/Madrid",
 		SurveyHour:      13,
 		ReportFrequency: ReportWeekly,
+		Language:        "en",
 	}
 }
 
@@ -72,6 +76,9 @@ func (s GuildSettings) Validate() error {
 	}
 	if _, err := time.LoadLocation(s.Timezone); err != nil || s.Timezone == "" {
 		return invalid("unknown timezone %q", s.Timezone)
+	}
+	if !validLanguage(s.Language) {
+		return invalid("language must be a code like \"en\" or \"pt-BR\"")
 	}
 	if !s.ReportFrequency.Valid() {
 		return invalid("report_frequency must be %q or %q", ReportWeekly, ReportMonthly)
@@ -187,4 +194,25 @@ func validateSnowflake(field, v string) error {
 		}
 	}
 	return nil
+}
+
+// validLanguage accepts "xx", "xxx" and "xx-YY" style codes.
+func validLanguage(v string) bool {
+	base, region, hasRegion := strings.Cut(v, "-")
+	if len(base) < 2 || len(base) > 3 || strings.ToLower(base) != base || !isLetters(base) {
+		return false
+	}
+	if hasRegion {
+		return len(region) == 2 && strings.ToUpper(region) == region && isLetters(region)
+	}
+	return true
+}
+
+func isLetters(v string) bool {
+	for _, r := range v {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
 }

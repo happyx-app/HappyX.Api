@@ -19,6 +19,7 @@ type guildDTO struct {
 	AdminDiscordID  string    `json:"admin_discord_user_id"`
 	Anonymous       bool      `json:"anonymous"`
 	Timezone        string    `json:"timezone"`
+	Language        string    `json:"language"`
 	SurveyHour      int       `json:"survey_hour"`
 	ReportFrequency string    `json:"report_frequency"`
 	Active          bool      `json:"active"`
@@ -28,7 +29,7 @@ type guildDTO struct {
 func toGuildDTO(g domain.Guild) guildDTO {
 	return guildDTO{
 		DiscordID: g.DiscordID, Name: g.Name, AdminDiscordID: g.AdminDiscordID,
-		Anonymous: g.Settings.Anonymous, Timezone: g.Settings.Timezone,
+		Anonymous: g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency),
 		Active: g.Active, CreatedAt: g.CreatedAt,
 	}
@@ -122,6 +123,7 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Anonymous       *bool   `json:"anonymous"`
 		Timezone        *string `json:"timezone"`
+		Language        *string `json:"language"`
 		SurveyHour      *int    `json:"survey_hour"`
 		ReportFrequency *string `json:"report_frequency"`
 		AdminDiscordID  *string `json:"admin_discord_user_id"`
@@ -130,7 +132,7 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := usecase.SettingsPatch{
-		Anonymous: in.Anonymous, Timezone: in.Timezone, SurveyHour: in.SurveyHour,
+		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		AdminDiscordID: in.AdminDiscordID,
 	}
 	if in.ReportFrequency != nil {

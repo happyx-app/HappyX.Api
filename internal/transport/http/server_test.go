@@ -85,6 +85,8 @@ func TestMoodFlow(t *testing.T) {
 		{"PUT", "/v1/guilds/" + g + "/members/" + u + "/mood", `{"mood":4,"message":"bien"}`, 200},
 		{"PUT", "/v1/guilds/" + g + "/members/" + u + "/mood", `{"mood":9}`, 400},
 		{"PATCH", "/v1/guilds/" + g, `{"survey_hour":25}`, 400},
+		{"PATCH", "/v1/guilds/" + g, `{"language":"pt-BR"}`, 200},
+		{"PATCH", "/v1/guilds/" + g, `{"language":"klingon"}`, 400},
 		{"GET", "/v1/guilds/999999999999999999", ``, 404},
 		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 201},
 		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 409},
