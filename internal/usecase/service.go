@@ -204,25 +204,12 @@ func (s *Service) MemberStreaks(ctx context.Context, guildID string) (map[string
 	if err != nil {
 		return nil, err
 	}
+	w := g.Settings.WorkingDays
+	if w == 0 {
+		w = domain.MondayToFriday
+	}
 	today := s.today(g)
-	entries, err := s.moods.ListBetween(ctx, guildID, today.AddDate(0, 0, -streakWindow), today)
-	if err != nil {
-		return nil, err
-	}
-	answered := map[string]map[time.Time]bool{}
-	for _, e := range entries {
-		if answered[e.MemberDiscordID] == nil {
-			answered[e.MemberDiscordID] = map[time.Time]bool{}
-		}
-		answered[e.MemberDiscordID][domain.TruncateDay(e.Day)] = true
-	}
-	out := make(map[string]int, len(answered))
-	for id, days := range answered {
-		if n := domain.Streak(g, days, today); n > 0 {
-			out[id] = n
-		}
-	}
-	return out, nil
+	return s.moods.Streaks(ctx, guildID, w, today.AddDate(0, 0, -streakWindow), today)
 }
 
 // --- Moods ---
