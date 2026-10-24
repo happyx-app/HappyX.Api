@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"testing"
 )
@@ -56,5 +57,19 @@ func TestViewer(t *testing.T) {
 	}
 	if _, err := o.Viewer(context.Background(), "wrong"); err == nil {
 		t.Fatal("a bad code should fail")
+	}
+}
+
+func TestInviteURL(t *testing.T) {
+	u, err := url.Parse(NewOAuth("cid", "secret", "https://example.com/cb").InviteURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	if u.Host != "discord.com" || q.Get("client_id") != "cid" || q.Get("scope") != "bot applications.commands" || q.Get("permissions") != "19456" {
+		t.Fatalf("invite URL: %s", u)
+	}
+	if q.Has("redirect_uri") || q.Has("client_secret") {
+		t.Fatalf("invite URL leaks login settings: %s", u)
 	}
 }

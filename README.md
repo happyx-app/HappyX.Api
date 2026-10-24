@@ -101,6 +101,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/web/auth/login` | redirects to Discord |
+| GET | `/web/auth/invite` | redirects to Discord to add the bot to a server (scopes `bot applications.commands`; View Channel, Send Messages and Embed Links for kudos). No login needed |
 | GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see, and the servers where they can play (`discord_guild_id`, `name`) |
