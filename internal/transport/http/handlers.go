@@ -190,6 +190,27 @@ func (s *Server) removeGuild(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listRemovals returns the Discord IDs of the servers deleted from HappyX that the bot must leave.
+func (s *Server) listRemovals(w http.ResponseWriter, r *http.Request) {
+	ids, err := s.svc.GuildRemovals(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	writeJSON(w, http.StatusOK, ids)
+}
+
+func (s *Server) doneRemoving(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.GuildRemoved(r.Context(), r.PathValue("guildID")); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Members ---
 
 func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {

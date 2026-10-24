@@ -95,7 +95,7 @@ func (r *GuildRepo) Upsert(ctx context.Context, g domain.Guild) (domain.Guild, e
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (discord_id) DO UPDATE
 		SET name = EXCLUDED.name, admin_discord_id = EXCLUDED.admin_discord_id,
-		    active = TRUE, updated_at = now()
+		    active = TRUE, left_at = NULL, updated_at = now()
 		RETURNING `+guildCols,
 		g.DiscordID, g.Name, g.AdminDiscordID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, int16(s.WorkingDays)))
 }
@@ -113,7 +113,7 @@ func (r *GuildRepo) ListVisible(ctx context.Context, userID string, guildIDs []s
 		guildIDs = []string{}
 	}
 	return r.list(ctx, `SELECT `+guildCols+` FROM guilds
-		WHERE admin_discord_id = $1 OR discord_id = ANY($2) ORDER BY name, id`, userID, guildIDs)
+		WHERE active AND (admin_discord_id = $1 OR discord_id = ANY($2)) ORDER BY name, id`, userID, guildIDs)
 }
 
 func (r *GuildRepo) ListJoined(ctx context.Context, userID string) ([]domain.Guild, error) {
@@ -150,8 +150,10 @@ func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s
 		int16(s.WorkingDays)))
 }
 
-func (r *GuildRepo) Deactivate(ctx context.Context, guildID string) error {
-	tag, err := r.db.Exec(ctx, `UPDATE guilds SET active = FALSE, updated_at = now() WHERE discord_id = $1`, guildID)
+func (r *GuildRepo) Deactivate(ctx context.Context, guildID string, at time.Time) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE guilds SET active = FALSE, left_at = COALESCE(left_at, $2), updated_at = now()
+		WHERE discord_id = $1`, guildID, at)
 	if err != nil {
 		return err
 	}
@@ -159,6 +161,53 @@ func (r *GuildRepo) Deactivate(ctx context.Context, guildID string) error {
 		return domain.ErrNotFound
 	}
 	return nil
+}
+
+func (r *GuildRepo) Delete(ctx context.Context, guildID string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
+	// Members, moods, kudos, games and dispatches go with the guild (ON DELETE CASCADE).
+	tag, err := tx.Exec(ctx, `DELETE FROM guilds WHERE discord_id = $1`, guildID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO guild_removals (discord_id) VALUES ($1) ON CONFLICT DO NOTHING`, guildID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *GuildRepo) DeleteLeftBefore(ctx context.Context, before time.Time) ([]string, error) {
+	rows, err := r.db.Query(ctx, `DELETE FROM guilds WHERE NOT active AND left_at < $1 RETURNING discord_id`, before)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+func (r *GuildRepo) ListRemovals(ctx context.Context) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT discord_id FROM guild_removals ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+func (r *GuildRepo) Removing(ctx context.Context, guildID string) (bool, error) {
+	var ok bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM guild_removals WHERE discord_id = $1)`, guildID).Scan(&ok)
+	return ok, err
+}
+
+func (r *GuildRepo) DoneRemoving(ctx context.Context, guildID string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM guild_removals WHERE discord_id = $1`, guildID)
+	return err
 }
 
 // --- Members ---

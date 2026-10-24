@@ -111,6 +111,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
 | PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
 | PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`, `working_days`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
+| DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, dispatches); the bot then leaves it. Same visibility rule as settings. Needs `Content-Type: application/json`. 204 |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
 the server: they are the author, so anonymity doesn't hide anything from them. The streak counts
@@ -128,7 +129,9 @@ doesn't break it.
 | POST | `/v1/guilds` | `discord_guild_id`, `name`, `admin_discord_user_id` | register on join; idempotent, keeps settings |
 | GET | `/v1/guilds/{guildID}` | | |
 | PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`) | |
-| DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys, keeps data |
+| DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys and hides the server from the dashboard. Data is kept 30 days in case the bot is added back, then deleted |
+| GET | `/v1/removals` | | Discord IDs of the servers deleted from the dashboard that the bot must leave |
+| DELETE | `/v1/removals/{guildID}` | | the bot has left the server. Until then `POST /v1/guilds` for it answers 410 |
 | GET | `/v1/guilds/{guildID}/members` | | active members |
 | PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in |
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out |

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -316,11 +317,118 @@ func TestWebSettings(t *testing.T) {
 		t.Fatalf("plain member update: %d", code)
 	}
 
-	// A server whose bot was removed can't be changed.
+	// A server whose bot was removed is hidden, so it can't be changed.
 	if code, _ := do(t, srv, "DELETE", "/v1/guilds/"+guildA, key, ""); code != 204 {
 		t.Fatalf("remove guild: %d", code)
 	}
-	if code, _ := patchSettings(t, srv, a, guildA, jsonCT, `{"language":"en"}`); code != 409 {
+	if code, _ := patchSettings(t, srv, a, guildA, jsonCT, `{"language":"en"}`); code != 404 {
 		t.Fatalf("inactive guild: %d", code)
 	}
+}
+
+func deleteGuild(t *testing.T, srv *httptest.Server, c *http.Client, guild, contentType, body string) int {
+	t.Helper()
+	req, _ := http.NewRequest("DELETE", srv.URL+"/web/guilds/"+guild, strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	res, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	return res.StatusCode
+}
+
+func TestWebDeleteGuild(t *testing.T) {
+	srv := newTestServer(t, func(s *httpapi.Server) {
+		s.WithWeb(httpapi.Web{Identity: fakeDiscord{}, SessionKey: []byte("0123456789abcdef0123456789abcdef"), PublicURL: "http://happyx.test/"})
+	})
+	for _, s := range []struct{ method, path, body string }{
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + guildA + `","name":"Equipo A","admin_discord_user_id":"` + adminA + `"}`},
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + guildB + `","name":"B","admin_discord_user_id":"` + adminB + `"}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID, `{"username":"x"}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID + "/mood", `{"mood":5}`},
+	} {
+		if code, body := do(t, srv, s.method, s.path, key, s.body); code != 200 {
+			t.Fatalf("%s %s: %d %v", s.method, s.path, code, body)
+		}
+	}
+	const jsonCT = "application/json"
+	confirm := `{"confirm_name":"Equipo A"}`
+
+	if code := deleteGuild(t, srv, newWebClient(t), guildA, jsonCT, confirm); code != 401 {
+		t.Fatalf("no session: %d", code)
+	}
+	m := newWebClient(t)
+	login(t, srv, m, "member")
+	if code := deleteGuild(t, srv, m, guildA, jsonCT, confirm); code != 404 {
+		t.Fatalf("plain member: %d", code)
+	}
+	b := newWebClient(t)
+	login(t, srv, b, "managerB")
+	if code := deleteGuild(t, srv, b, guildA, jsonCT, confirm); code != 404 {
+		t.Fatalf("another server's manager: %d", code)
+	}
+
+	a := newWebClient(t)
+	login(t, srv, a, "adminA")
+	for _, c := range []struct {
+		name, ct, body string
+		want           int
+	}{
+		{"no content type", "", confirm, 415},
+		{"no confirmation", jsonCT, `{}`, 400},
+		{"wrong name", jsonCT, `{"confirm_name":"B"}`, 400},
+	} {
+		if code := deleteGuild(t, srv, a, guildA, c.ct, c.body); code != c.want {
+			t.Fatalf("%s: got %d, want %d", c.name, code, c.want)
+		}
+	}
+	if code := deleteGuild(t, srv, a, guildA, jsonCT, confirm); code != 204 {
+		t.Fatalf("delete: %d", code)
+	}
+	if _, me := get(t, a, srv.URL+"/web/me"); len(guildIDs(me)) != 0 {
+		t.Fatalf("deleted guild still listed: %v", me)
+	}
+	if code, _ := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 404 {
+		t.Fatalf("bot reading the deleted guild: %d", code)
+	}
+	if code, _ := do(t, srv, "GET", "/v1/guilds/"+guildB, key, ""); code != 200 {
+		t.Fatalf("guild B must be untouched: %d", code)
+	}
+
+	// The bot finds the server in the removal queue, can't register it again, leaves and confirms.
+	res, err := doRaw(t, srv, "GET", "/v1/removals")
+	if err != nil || res != `["`+guildA+`"]` {
+		t.Fatalf("removals: %q %v", res, err)
+	}
+	reg := `{"discord_guild_id":"` + guildA + `","name":"Equipo A","admin_discord_user_id":"` + adminA + `"}`
+	if code, _ := do(t, srv, "POST", "/v1/guilds", key, reg); code != 410 {
+		t.Fatalf("register while removing: %d", code)
+	}
+	if code, _ := do(t, srv, "DELETE", "/v1/removals/"+guildA, key, ""); code != 204 {
+		t.Fatalf("done removing: %d", code)
+	}
+	if res, _ := doRaw(t, srv, "GET", "/v1/removals"); res != `[]` {
+		t.Fatalf("removals after leaving: %q", res)
+	}
+	if code, _ := do(t, srv, "POST", "/v1/guilds", key, reg); code != 200 {
+		t.Fatalf("register after leaving: %d", code)
+	}
+}
+
+// doRaw calls a /v1 route with the bot's key and returns the trimmed body.
+func doRaw(t *testing.T, srv *httptest.Server, method, path string) (string, error) {
+	t.Helper()
+	req, _ := http.NewRequest(method, srv.URL+path, nil)
+	req.Header.Set("Authorization", "Bearer "+key)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	var b strings.Builder
+	_, err = io.Copy(&b, res.Body)
+	return strings.TrimSpace(b.String()), err
 }
