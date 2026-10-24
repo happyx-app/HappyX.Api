@@ -33,7 +33,7 @@ func testServiceClock(t *testing.T, now usecase.Clock) *usecase.Service {
 	}
 	t.Cleanup(pool.Close)
 	reset(t, pool)
-	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool), NewGameRepo(pool), NewAccessRepo(pool), now)
+	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool), NewGameRepo(pool), NewAccessRepo(pool), NewPrivacyRepo(pool), now)
 }
 
 func reset(t *testing.T, pool *pgxpool.Pool) {

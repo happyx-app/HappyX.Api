@@ -39,7 +39,7 @@ func newTestServerClock(t *testing.T, now usecase.Clock, opts ...func(*httpapi.S
 	if _, err := pool.Exec(context.Background(), `TRUNCATE guilds, guild_removals, members, mood_entries, dispatches, kudos, game_rounds, game_answers, game_guesses RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool), postgres.NewGameRepo(pool), postgres.NewAccessRepo(pool), now)
+	svc := usecase.NewService(postgres.NewGuildRepo(pool), postgres.NewMemberRepo(pool), postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool), postgres.NewGameRepo(pool), postgres.NewAccessRepo(pool), postgres.NewPrivacyRepo(pool), now)
 	sum := sha256.Sum256([]byte(key))
 	api := httpapi.NewServer(svc, [][]byte{sum[:]}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	for _, opt := range opts {

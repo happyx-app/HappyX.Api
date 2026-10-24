@@ -109,5 +109,17 @@ type GameRepository interface {
 	ListProposals(ctx context.Context, guildID string, week time.Time) ([]domain.GameProposal, error)
 }
 
+type PrivacyRepository interface {
+	// UserData returns everything stored about userID, in every guild, including guilds the bot
+	// left that are still kept.
+	UserData(ctx context.Context, userID string) (domain.UserData, error)
+	// EraseUser deletes userID's answers, kudos given and received, and everything they did in
+	// «Who's who?», in every guild. Their member rows stay, paused and without a username, so
+	// the bot doesn't send them the survey again; Discord IDs are kept only for that.
+	EraseUser(ctx context.Context, userID string) error
+	// GuildData returns everything stored about the guild.
+	GuildData(ctx context.Context, guildID string) (domain.GuildData, error)
+}
+
 // Clock lets tests control "today".
 type Clock func() time.Time

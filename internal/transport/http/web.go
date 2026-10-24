@@ -20,6 +20,7 @@ import (
 // Identity logs users in with Discord.
 type Identity interface {
 	AuthURL(state string) string
+	InviteURL() string
 	Viewer(ctx context.Context, code string) (domain.Viewer, error)
 }
 
@@ -53,15 +54,19 @@ func (s *Server) WithWeb(w Web) *Server {
 
 func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /web/auth/login", s.webLogin)
+	mux.HandleFunc("GET /web/auth/invite", s.webInvite)
 	mux.HandleFunc("GET /web/auth/callback", s.webCallback)
 	mux.HandleFunc("POST /web/auth/logout", s.webLogout)
 	mux.Handle("GET /web/me", s.requireViewer(s.webMe))
 	mux.Handle("GET /web/me/moods", s.requireViewer(s.webMyMoods))
+	mux.Handle("GET /web/me/data", s.requireViewer(s.webMyData))
+	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
 	mux.Handle("DELETE /web/guilds/{guildID}", s.requireViewer(s.webDeleteGuild))
 	mux.Handle("GET /web/guilds/{guildID}/access", s.requireViewer(s.webAccess))
 	mux.Handle("PUT /web/guilds/{guildID}/access", s.requireViewer(s.webSetAccess))
+	mux.Handle("GET /web/guilds/{guildID}/export", s.requireViewer(s.webGuildExport))
 	mux.Handle("GET /web/guilds/{guildID}/game", s.requireViewer(s.webGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/answer", s.requireViewer(s.webAnswerGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/guesses", s.requireViewer(s.webGuessGame))
@@ -93,6 +98,11 @@ func (s *Server) webLogin(w http.ResponseWriter, r *http.Request) {
 	state := hex.EncodeToString(b)
 	s.setCookie(w, stateCookie, state, 10*time.Minute)
 	http.Redirect(w, r, s.web.Identity.AuthURL(state), http.StatusFound)
+}
+
+// webInvite sends the landing page's "Add to Discord" button to Discord, which needs no login.
+func (s *Server) webInvite(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, s.web.Identity.InviteURL(), http.StatusFound)
 }
 
 func (s *Server) webCallback(w http.ResponseWriter, r *http.Request) {

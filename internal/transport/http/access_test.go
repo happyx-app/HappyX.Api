@@ -91,6 +91,12 @@ func TestWebAccess(t *testing.T) {
 	if code := deleteGuild(t, srv, m, guildA, "application/json", `{"confirm_name":"A"}`); code != 403 {
 		t.Fatalf("manager deleting the server: %d", code)
 	}
+	if code, _ := send(t, m, "GET", srv.URL+"/web/guilds/"+guildA+"/export", "", ""); code != 403 {
+		t.Fatalf("manager exporting the server: %d", code)
+	}
+	if code, _ := send(t, owner, "GET", srv.URL+"/web/guilds/"+guildA+"/export", "", ""); code != 200 {
+		t.Fatalf("owner exporting the server: %d", code)
+	}
 
 	// Someone without a grant still can't tell the server uses HappyX.
 	o := newWebClient(t)

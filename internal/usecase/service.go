@@ -18,14 +18,15 @@ type Service struct {
 	kudos      KudosRepository
 	games      GameRepository
 	access     AccessRepository
+	privacy    PrivacyRepository
 	now        Clock
 }
 
-func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, ga GameRepository, a AccessRepository, now Clock) *Service {
+func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, ga GameRepository, a AccessRepository, p PrivacyRepository, now Clock) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{guilds: g, members: m, moods: mo, dispatches: d, kudos: k, games: ga, access: a, now: now}
+	return &Service{guilds: g, members: m, moods: mo, dispatches: d, kudos: k, games: ga, access: a, privacy: p, now: now}
 }
 
 // --- Guilds ---
