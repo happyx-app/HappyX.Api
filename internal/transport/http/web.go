@@ -60,6 +60,8 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
 	mux.Handle("DELETE /web/guilds/{guildID}", s.requireViewer(s.webDeleteGuild))
+	mux.Handle("GET /web/guilds/{guildID}/access", s.requireViewer(s.webAccess))
+	mux.Handle("PUT /web/guilds/{guildID}/access", s.requireViewer(s.webSetAccess))
 	mux.Handle("GET /web/guilds/{guildID}/game", s.requireViewer(s.webGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/answer", s.requireViewer(s.webAnswerGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/guesses", s.requireViewer(s.webGuessGame))
@@ -162,13 +164,19 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 		DiscordID string `json:"discord_guild_id"`
 		Name      string `json:"name"`
 	}
+	// access is "view" (reports), "manage" (reports and settings) or "owner" (also who has
+	// access, and deleting the server).
+	type myGuildDTO struct {
+		guildDTO
+		Access string `json:"access"`
+	}
 	out := struct {
 		User   viewerDTO      `json:"user"`
-		Guilds []guildDTO     `json:"guilds"`
+		Guilds []myGuildDTO   `json:"guilds"`
 		Games  []gameGuildDTO `json:"games"`
-	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []guildDTO{}, []gameGuildDTO{}}
+	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []myGuildDTO{}, []gameGuildDTO{}}
 	for _, g := range gs {
-		out.Guilds = append(out.Guilds, toGuildDTO(g))
+		out.Guilds = append(out.Guilds, myGuildDTO{toGuildDTO(g.Guild), g.Level.String()})
 	}
 	for _, g := range games {
 		out.Games = append(out.Games, gameGuildDTO{g.DiscordID, g.Name})
@@ -177,7 +185,7 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 }
 
 func (s *Server) webReport(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
-	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"))
+	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"), domain.AccessView)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -186,13 +194,13 @@ func (s *Server) webReport(w http.ResponseWriter, r *http.Request, v domain.View
 }
 
 // webUpdateSettings changes a server's settings from the dashboard: the same options as the
-// bot's /happyx config, except who receives the reports. Only people who can see the server's
-// dashboard may change them.
+// bot's /happyx config, except who receives the reports (see webSetAccess). It needs the
+// "manage" level.
 func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
 	if !requireJSON(w, r) {
 		return
 	}
-	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"))
+	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"), domain.AccessManage)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -249,6 +257,75 @@ func (s *Server) webDeleteGuild(w http.ResponseWriter, r *http.Request, v domain
 	}
 	s.log.Info("guild deleted from the dashboard", "guild", guildID, "by", v.DiscordID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type grantDTO struct {
+	Kind  string `json:"kind"` // "user" or "role"
+	ID    string `json:"id"`
+	Level string `json:"level"` // "view" or "manage"
+}
+
+type accessDTO struct {
+	AdminDiscordID string      `json:"admin_discord_user_id"`
+	Grants         []grantDTO  `json:"grants"`
+	Roles          []roleDTO   `json:"roles"`
+	Members        []memberDTO `json:"members"`
+}
+
+func toAccessDTO(a usecase.AccessSettings) accessDTO {
+	out := accessDTO{AdminDiscordID: a.Guild.AdminDiscordID, Grants: []grantDTO{}, Roles: []roleDTO{}, Members: []memberDTO{}}
+	for _, g := range a.Grants {
+		out.Grants = append(out.Grants, grantDTO{Kind: string(g.Kind), ID: g.TargetID, Level: g.Level.String()})
+	}
+	for _, ro := range a.Roles {
+		out.Roles = append(out.Roles, roleDTO{DiscordID: ro.DiscordID, Name: ro.Name, Color: ro.Color, Position: ro.Position})
+	}
+	for _, m := range a.Members {
+		out.Members = append(out.Members, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt})
+	}
+	return out
+}
+
+// webAccess returns who has access to a server, with the roles and members to choose from.
+// Only owners (the main admin, the server's owner and its Discord Administrators) may see it.
+func (s *Server) webAccess(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	a, err := s.svc.GuildAccessSettings(r.Context(), v, r.PathValue("guildID"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toAccessDTO(a))
+}
+
+// webSetAccess changes the main admin, who receives the reports, and replaces the grants.
+func (s *Server) webSetAccess(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	if !requireJSON(w, r) {
+		return
+	}
+	var in struct {
+		AdminDiscordID string     `json:"admin_discord_user_id"`
+		Grants         []grantDTO `json:"grants"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	grants := make([]domain.AccessGrant, 0, len(in.Grants))
+	for _, g := range in.Grants {
+		level, err := domain.ParseGrantLevel(g.Level)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		grants = append(grants, domain.AccessGrant{Kind: domain.GrantKind(g.Kind), TargetID: g.ID, Level: level})
+	}
+	a, err := s.svc.SetGuildAccess(r.Context(), v, r.PathValue("guildID"), in.AdminDiscordID, grants)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("access changed from the dashboard", "guild", a.Guild.DiscordID, "by", v.DiscordID,
+		"admin", a.Guild.AdminDiscordID, "grants", len(a.Grants))
+	writeJSON(w, http.StatusOK, toAccessDTO(a))
 }
 
 // requireJSON guards the dashboard's writes. A JSON body can't be sent cross-site without a CORS

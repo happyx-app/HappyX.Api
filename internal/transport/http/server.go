@@ -45,7 +45,9 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/guilds/{guildID}/members", s.listMembers)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}", s.joinMember)
 	api.HandleFunc("DELETE /v1/guilds/{guildID}/members/{userID}", s.leaveMember)
+	api.HandleFunc("GET /v1/guilds/{guildID}/members/{userID}/access", s.memberAccess)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}/mood", s.recordMood)
+	api.HandleFunc("PUT /v1/guilds/{guildID}/roles", s.syncRoles)
 	api.HandleFunc("GET /v1/guilds/{guildID}/report", s.report)
 	api.HandleFunc("POST /v1/guilds/{guildID}/dispatches", s.claimDispatch)
 	api.HandleFunc("POST /v1/guilds/{guildID}/kudos", s.giveKudos)
@@ -136,7 +138,7 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, domain.ErrInactive):
 		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, domain.ErrNotAMember):
+	case errors.Is(err, domain.ErrNotAMember), errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrClosed), errors.Is(err, domain.ErrGamesOff):
 		writeError(w, http.StatusConflict, err.Error())

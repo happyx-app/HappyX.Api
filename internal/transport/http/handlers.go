@@ -39,6 +39,13 @@ func toGuildDTO(g domain.Guild) guildDTO {
 	}
 }
 
+type roleDTO struct {
+	DiscordID string `json:"id"`
+	Name      string `json:"name"`
+	Color     int    `json:"color"`
+	Position  int    `json:"position"`
+}
+
 type memberDTO struct {
 	DiscordID string    `json:"discord_user_id"`
 	Username  string    `json:"username"`
@@ -231,11 +238,17 @@ func (s *Server) joinMember(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		// Active is optional: omitted keeps an existing member's opt-in state.
 		Active *bool `json:"active"`
+		// RoleIDs is optional: omitted keeps the member's stored Discord roles.
+		RoleIDs *[]string `json:"role_ids"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	m, err := s.svc.UpsertMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID"), in.Username, in.Active)
+	var roles []string
+	if in.RoleIDs != nil {
+		roles = append([]string{}, *in.RoleIDs...)
+	}
+	m, err := s.svc.UpsertMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID"), in.Username, in.Active, roles)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -243,8 +256,42 @@ func (s *Server) joinMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt})
 }
 
+// leaveMember stops the survey for the member: they paused it or, with ?left=true, they left
+// the server.
 func (s *Server) leaveMember(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.LeaveMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID")); err != nil {
+	left := r.URL.Query().Get("left") == "true"
+	if err := s.svc.LeaveMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID"), left); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// memberAccess answers {"level": "none"|"view"|"manage"|"owner"} so the bot can check its admin
+// commands. ?discord_admin=true says Discord reports them as the owner or an Administrator.
+func (s *Server) memberAccess(w http.ResponseWriter, r *http.Request) {
+	level, err := s.svc.MemberAccess(r.Context(), r.PathValue("guildID"), r.PathValue("userID"),
+		r.URL.Query().Get("discord_admin") == "true")
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"level": level.String()})
+}
+
+// syncRoles replaces the guild's Discord roles with {"roles": [...]}.
+func (s *Server) syncRoles(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Roles []roleDTO `json:"roles"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	roles := make([]domain.Role, 0, len(in.Roles))
+	for _, ro := range in.Roles {
+		roles = append(roles, domain.Role{DiscordID: ro.DiscordID, Name: ro.Name, Color: ro.Color, Position: ro.Position})
+	}
+	if err := s.svc.SyncRoles(r.Context(), r.PathValue("guildID"), roles); err != nil {
 		s.fail(w, r, err)
 		return
 	}

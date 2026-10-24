@@ -17,14 +17,15 @@ type Service struct {
 	dispatches DispatchRepository
 	kudos      KudosRepository
 	games      GameRepository
+	access     AccessRepository
 	now        Clock
 }
 
-func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, ga GameRepository, now Clock) *Service {
+func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, ga GameRepository, a AccessRepository, now Clock) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{guilds: g, members: m, moods: mo, dispatches: d, kudos: k, games: ga, now: now}
+	return &Service{guilds: g, members: m, moods: mo, dispatches: d, kudos: k, games: ga, access: a, now: now}
 }
 
 // --- Guilds ---
@@ -137,7 +138,7 @@ func (s *Service) DeleteLeftGuilds(ctx context.Context) ([]string, error) {
 // DeleteGuild deletes a guild and all its data from the dashboard. confirmName must be the
 // guild's name, as the viewer typed it to confirm. The bot then leaves the server.
 func (s *Service) DeleteGuild(ctx context.Context, v domain.Viewer, guildID, confirmName string) error {
-	g, err := s.ViewerGuild(ctx, v, guildID)
+	g, err := s.ViewerGuild(ctx, v, guildID, domain.AccessOwner)
 	if err != nil {
 		return err
 	}
@@ -159,21 +160,27 @@ func (s *Service) GuildRemoved(ctx context.Context, guildID string) error {
 
 // --- Members ---
 
-// UpsertMember registers a guild member or refreshes their username. With active nil an
-// existing member keeps their opt-in state (used when syncing the member list); true opts
-// them in (they joined the server or asked to receive the survey again).
-func (s *Service) UpsertMember(ctx context.Context, guildID, userID, username string, active *bool) (domain.Member, error) {
+// UpsertMember registers a guild member or refreshes their username and roles. With active nil
+// an existing member keeps their opt-in state (used when syncing the member list); true opts
+// them in (they joined the server or asked to receive the survey again). With roleIDs nil
+// their stored roles are kept.
+func (s *Service) UpsertMember(ctx context.Context, guildID, userID, username string, active *bool, roleIDs []string) (domain.Member, error) {
 	if _, err := s.activeGuild(ctx, guildID); err != nil {
 		return domain.Member{}, err
 	}
-	m := domain.Member{GuildDiscordID: guildID, DiscordID: userID, Username: username}
+	m := domain.Member{GuildDiscordID: guildID, DiscordID: userID, Username: username, RoleIDs: roleIDs}
 	if err := m.Validate(); err != nil {
 		return domain.Member{}, err
 	}
 	return s.members.Upsert(ctx, m, active)
 }
 
-func (s *Service) LeaveMember(ctx context.Context, guildID, userID string) error {
+// LeaveMember stops sending the survey to the member. With leftServer they also left the
+// Discord server, which ends any access they had to its dashboard.
+func (s *Service) LeaveMember(ctx context.Context, guildID, userID string, leftServer bool) error {
+	if leftServer {
+		return s.members.Left(ctx, guildID, userID)
+	}
 	return s.members.Deactivate(ctx, guildID, userID)
 }
 
@@ -333,8 +340,14 @@ func (s *Service) Report(ctx context.Context, guildID string, from, to time.Time
 
 // --- Web dashboard ---
 
-// VisibleGuilds lists the guilds the viewer may see on the dashboard.
-func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]domain.Guild, error) {
+// GuildAccess is a guild together with what the viewer may do with it.
+type GuildAccess struct {
+	Guild domain.Guild
+	Level domain.AccessLevel
+}
+
+// VisibleGuilds lists the guilds the viewer may see on the dashboard, with their access level.
+func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]GuildAccess, error) {
 	if v.DiscordID == "" {
 		return nil, nil
 	}
@@ -342,10 +355,14 @@ func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]domain.
 	if err != nil {
 		return nil, err
 	}
-	out := gs[:0]
+	out := make([]GuildAccess, 0, len(gs))
 	for _, g := range gs {
-		if v.CanView(g) {
-			out = append(out, g)
+		level, err := s.accessOf(ctx, g, v.DiscordID, v.ManagesInDiscord(g.DiscordID))
+		if err != nil {
+			return nil, err
+		}
+		if level >= domain.AccessView {
+			out = append(out, GuildAccess{g, level})
 		}
 	}
 	return out, nil
@@ -410,16 +427,27 @@ func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.
 	return out, nil
 }
 
-// ViewerGuild returns the guild if the viewer may see it. Guilds they can't see are reported
-// as not found, so the dashboard doesn't reveal which servers use HappyX.
-func (s *Service) ViewerGuild(ctx context.Context, v domain.Viewer, guildID string) (domain.Guild, error) {
+// ViewerGuild returns the guild if the viewer has at least the need level in it. Guilds they
+// can't see at all are reported as not found, so the dashboard doesn't reveal which servers use
+// HappyX; guilds they can see but not act on this way give ErrForbidden.
+func (s *Service) ViewerGuild(ctx context.Context, v domain.Viewer, guildID string, need domain.AccessLevel) (domain.Guild, error) {
 	g, err := s.guilds.Get(ctx, guildID)
 	if err != nil {
 		return domain.Guild{}, err
 	}
 	// A server the bot left is hidden from the dashboard until the bot is added back.
-	if !g.Active || !v.CanView(g) {
+	if !g.Active {
 		return domain.Guild{}, domain.ErrNotFound
+	}
+	level, err := s.accessOf(ctx, g, v.DiscordID, v.ManagesInDiscord(g.DiscordID))
+	if err != nil {
+		return domain.Guild{}, err
+	}
+	if level < domain.AccessView {
+		return domain.Guild{}, domain.ErrNotFound
+	}
+	if level < need {
+		return domain.Guild{}, domain.ErrForbidden
 	}
 	return g, nil
 }

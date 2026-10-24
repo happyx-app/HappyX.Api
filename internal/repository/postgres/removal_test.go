@@ -29,10 +29,10 @@ func TestLeftGuildIsKeptThenDeleted(t *testing.T) {
 	if err := svc.RemoveGuild(ctx, guildA); err != nil {
 		t.Fatal(err)
 	}
-	if gs, _ := svc.VisibleGuilds(ctx, viewer); len(gs) != 1 || gs[0].DiscordID != guildB {
+	if gs, _ := svc.VisibleGuilds(ctx, viewer); len(gs) != 1 || gs[0].Guild.DiscordID != guildB {
 		t.Fatalf("a guild the bot left must be hidden from the dashboard: %v", gs)
 	}
-	if _, err := svc.ViewerGuild(ctx, viewer, guildA); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := svc.ViewerGuild(ctx, viewer, guildA, domain.AccessView); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("reading a guild the bot left: want ErrNotFound, got %v", err)
 	}
 
