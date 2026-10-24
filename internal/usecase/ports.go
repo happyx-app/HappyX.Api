@@ -18,14 +18,28 @@ type GuildRepository interface {
 	Upsert(ctx context.Context, g domain.Guild) (domain.Guild, error)
 	Get(ctx context.Context, guildID string) (domain.Guild, error)
 	ListActive(ctx context.Context) ([]domain.Guild, error)
-	// ListVisible returns the guilds, active or not, whose admin is userID or whose Discord ID
-	// is in guildIDs.
+	// ListVisible returns the active guilds whose admin is userID or whose Discord ID is in
+	// guildIDs.
 	ListVisible(ctx context.Context, userID string, guildIDs []string) ([]domain.Guild, error)
 	// ListJoined returns the active guilds where userID is a member taking part (not paused).
 	ListJoined(ctx context.Context, userID string) ([]domain.Guild, error)
 	// UpdateConfig sets the guild's admin and settings in one write.
 	UpdateConfig(ctx context.Context, guildID, adminID string, s domain.GuildSettings) (domain.Guild, error)
-	Deactivate(ctx context.Context, guildID string) error
+	// Deactivate marks the guild as left by the bot at the given time. Its data is kept until
+	// DeleteLeftBefore.
+	Deactivate(ctx context.Context, guildID string, at time.Time) error
+	// Delete removes the guild and all its data, and records it in the removal queue so the
+	// bot leaves the server.
+	Delete(ctx context.Context, guildID string) error
+	// DeleteLeftBefore deletes, with all their data, the guilds the bot left before the given
+	// time, and returns their Discord IDs.
+	DeleteLeftBefore(ctx context.Context, before time.Time) ([]string, error)
+	// ListRemovals returns the deleted guilds the bot still has to leave.
+	ListRemovals(ctx context.Context) ([]string, error)
+	// Removing reports whether the guild is in the removal queue.
+	Removing(ctx context.Context, guildID string) (bool, error)
+	// DoneRemoving takes the guild off the removal queue.
+	DoneRemoving(ctx context.Context, guildID string) error
 }
 
 type MemberRepository interface {

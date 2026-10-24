@@ -47,6 +47,12 @@ func (s *Service) RegisterGuild(ctx context.Context, in RegisterGuildInput) (dom
 	if err := g.Validate(); err != nil {
 		return domain.Guild{}, err
 	}
+	// A server deleted from the dashboard must not come back before the bot has left it.
+	if removing, err := s.guilds.Removing(ctx, in.DiscordID); err != nil {
+		return domain.Guild{}, err
+	} else if removing {
+		return domain.Guild{}, domain.ErrRemoving
+	}
 	return s.guilds.Upsert(ctx, g)
 }
 
@@ -112,10 +118,43 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	return s.guilds.UpdateConfig(ctx, guildID, g.AdminDiscordID, st)
 }
 
-// RemoveGuild is called when the bot is kicked. Data is kept but the guild stops
-// receiving surveys and reports.
+// LeftGuildRetention is how long a guild's data is kept after the bot is removed, so adding the
+// bot back brings everything back.
+const LeftGuildRetention = 30 * 24 * time.Hour
+
+// RemoveGuild is called when the bot is kicked. The guild stops receiving surveys and reports
+// and disappears from the dashboard; its data is deleted after LeftGuildRetention.
 func (s *Service) RemoveGuild(ctx context.Context, guildID string) error {
-	return s.guilds.Deactivate(ctx, guildID)
+	return s.guilds.Deactivate(ctx, guildID, s.now())
+}
+
+// DeleteLeftGuilds deletes the guilds the bot left more than LeftGuildRetention ago, with all
+// their data, and returns their Discord IDs.
+func (s *Service) DeleteLeftGuilds(ctx context.Context) ([]string, error) {
+	return s.guilds.DeleteLeftBefore(ctx, s.now().Add(-LeftGuildRetention))
+}
+
+// DeleteGuild deletes a guild and all its data from the dashboard. confirmName must be the
+// guild's name, as the viewer typed it to confirm. The bot then leaves the server.
+func (s *Service) DeleteGuild(ctx context.Context, v domain.Viewer, guildID, confirmName string) error {
+	g, err := s.ViewerGuild(ctx, v, guildID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(confirmName) != strings.TrimSpace(g.Name) {
+		return domain.ValidationError{Reason: "type the server's name to confirm"}
+	}
+	return s.guilds.Delete(ctx, guildID)
+}
+
+// GuildRemovals lists the guilds deleted from the dashboard that the bot still has to leave.
+func (s *Service) GuildRemovals(ctx context.Context) ([]string, error) {
+	return s.guilds.ListRemovals(ctx)
+}
+
+// GuildRemoved is called once the bot has left a deleted guild.
+func (s *Service) GuildRemoved(ctx context.Context, guildID string) error {
+	return s.guilds.DoneRemoving(ctx, guildID)
 }
 
 // --- Members ---
@@ -378,7 +417,8 @@ func (s *Service) ViewerGuild(ctx context.Context, v domain.Viewer, guildID stri
 	if err != nil {
 		return domain.Guild{}, err
 	}
-	if !v.CanView(g) {
+	// A server the bot left is hidden from the dashboard until the bot is added back.
+	if !g.Active || !v.CanView(g) {
 		return domain.Guild{}, domain.ErrNotFound
 	}
 	return g, nil

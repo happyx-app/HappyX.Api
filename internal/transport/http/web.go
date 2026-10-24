@@ -59,6 +59,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/me/moods", s.requireViewer(s.webMyMoods))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
+	mux.Handle("DELETE /web/guilds/{guildID}", s.requireViewer(s.webDeleteGuild))
 	mux.Handle("GET /web/guilds/{guildID}/game", s.requireViewer(s.webGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/answer", s.requireViewer(s.webAnswerGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/guesses", s.requireViewer(s.webGuessGame))
@@ -226,6 +227,28 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	}
 	s.log.Info("settings changed from the dashboard", "guild", g.DiscordID, "by", v.DiscordID)
 	writeJSON(w, http.StatusOK, toGuildDTO(g))
+}
+
+// webDeleteGuild deletes a server and all its data from HappyX. The body must name the server
+// ({"confirm_name": "..."}) so a stray request can't delete it. The bot leaves the server shortly
+// after.
+func (s *Server) webDeleteGuild(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	if !requireJSON(w, r) {
+		return
+	}
+	var in struct {
+		ConfirmName string `json:"confirm_name"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	guildID := r.PathValue("guildID")
+	if err := s.svc.DeleteGuild(r.Context(), v, guildID, in.ConfirmName); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("guild deleted from the dashboard", "guild", guildID, "by", v.DiscordID)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // requireJSON guards the dashboard's writes. A JSON body can't be sent cross-site without a CORS

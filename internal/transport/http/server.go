@@ -40,6 +40,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/guilds/{guildID}", s.getGuild)
 	api.HandleFunc("PATCH /v1/guilds/{guildID}", s.updateGuild)
 	api.HandleFunc("DELETE /v1/guilds/{guildID}", s.removeGuild)
+	api.HandleFunc("GET /v1/removals", s.listRemovals)
+	api.HandleFunc("DELETE /v1/removals/{guildID}", s.doneRemoving)
 	api.HandleFunc("GET /v1/guilds/{guildID}/members", s.listMembers)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}", s.joinMember)
 	api.HandleFunc("DELETE /v1/guilds/{guildID}/members/{userID}", s.leaveMember)
@@ -138,6 +140,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrClosed), errors.Is(err, domain.ErrGamesOff):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, domain.ErrRemoving):
+		writeError(w, http.StatusGone, err.Error())
 	case errors.Is(err, domain.ErrTooMany):
 		writeError(w, http.StatusTooManyRequests, err.Error())
 	default:

@@ -63,6 +63,8 @@ func run(log *slog.Logger) error {
 		WriteTimeout:      15 * time.Second,
 	}
 
+	go deleteLeftGuilds(ctx, svc, log)
+
 	errc := make(chan error, 1)
 	go func() {
 		log.Info("listening", "addr", cfg.Addr)
@@ -80,4 +82,24 @@ func run(log *slog.Logger) error {
 		return srv.Shutdown(shutdownCtx)
 	}
 	return nil
+}
+
+// deleteLeftGuilds deletes, every hour, the servers the bot left more than
+// usecase.LeftGuildRetention ago.
+func deleteLeftGuilds(ctx context.Context, svc *usecase.Service, log *slog.Logger) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		ids, err := svc.DeleteLeftGuilds(ctx)
+		if err != nil {
+			log.Error("delete left guilds", "err", err)
+		} else if len(ids) > 0 {
+			log.Info("deleted guilds the bot left", "guilds", ids)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }

@@ -20,6 +20,8 @@ var (
 	ErrClosed = errors.New("not open now")
 	// ErrGamesOff means the guild hasn't turned games on.
 	ErrGamesOff = errors.New("games are turned off in this guild")
+	// ErrRemoving means the guild was deleted from HappyX and the bot is about to leave it.
+	ErrRemoving = errors.New("guild was deleted from HappyX")
 )
 
 // ValidationError wraps ErrInvalid with a human readable reason.
