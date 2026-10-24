@@ -163,6 +163,7 @@ type serverExportDTO struct {
 	WorkingDays     []int     `json:"working_days"`
 	ReportFrequency string    `json:"report_frequency"`
 	GamesEnabled    bool      `json:"games_enabled"`
+	SurveyMessage   string    `json:"survey_message,omitempty"`
 	AdminDiscordID  string    `json:"admin_discord_user_id"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -218,7 +219,7 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 			Anonymous:       g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 			SurveyHour: g.Settings.SurveyHour, WorkingDays: g.Settings.WorkingDays.ISO(),
 			ReportFrequency: string(g.Settings.ReportFrequency), GamesEnabled: g.Settings.GamesEnabled,
-			AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
+			SurveyMessage: g.Settings.SurveyMessage, AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
 		},
 		Members: []exportMemberDTO{}, Moods: []exportMoodDTO{}, Kudos: toExportKudos(x.Kudos, true, true), Games: []exportRoundDTO{},
 	}

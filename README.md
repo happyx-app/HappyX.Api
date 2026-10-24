@@ -45,6 +45,15 @@ Each guild has working days (`working_days`, Monday to Friday by default). The b
 daily survey on those days. Reports leave out non-working days unless someone answered on one, and
 a member's streak isn't broken by them.
 
+### Custom survey message
+
+Admins can write their own text for the daily survey (`survey_message`, at most 500 characters).
+It is sent as written, in the language it was written in; empty means the default text in the
+guild's language. It may use these variables, which the bot fills in for each person:
+`{{user.name}}`, `{{user.mention}}`, `{{user.streak}}`, `{{guild.name}}`, `{{date}}` and
+`{{weekday}}`. Any other `{{...}}` is rejected with 400, so a typo never reaches members. The
+anonymity notice, the mood buttons and «Don't ask me again» are always added by the bot below it.
+
 ### «Who's who?» game
 
 A weekly icebreaker, off by default (`games_enabled`). On Monday the bot sends every member who
@@ -119,7 +128,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
 | PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`, `working_days`. Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`, `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |
 | PUT | `/web/guilds/{guildID}/access` | `admin_discord_user_id` and the full `grants` list (at most 50). The admin and granted users must be in the server, roles must exist. Needs **owner** and `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, dispatches); the bot then leaves it. Needs **owner** and `Content-Type: application/json`. 204 |
@@ -154,7 +163,7 @@ the round is finished. Nightly database backups still hold erased data until the
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys and hides the server from the dashboard. Data is kept 30 days in case the bot is added back, then deleted |
 | GET | `/v1/removals` | | Discord IDs of the servers deleted from the dashboard that the bot must leave |
 | DELETE | `/v1/removals/{guildID}` | | the bot has left the server. Until then `POST /v1/guilds` for it answers 410 |
-| GET | `/v1/guilds/{guildID}/members` | | active members |
+| GET | `/v1/guilds/{guildID}/members` | | active members; `?with=streak` adds each one's `streak` (days in a row answering, omitted when 0) |
 | PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional), `role_ids` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in; `role_ids` omitted keeps their Discord roles |
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out; `?left=true` when they left the server, which also ends their dashboard access |
 | GET | `/v1/guilds/{guildID}/members/{userID}/access` | | `{level}`: `none`, `view`, `manage` or `owner`, for the bot's admin commands. `?discord_admin=true` when Discord says they own the server or are an Administrator |

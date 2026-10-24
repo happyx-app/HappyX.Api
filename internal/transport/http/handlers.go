@@ -24,7 +24,8 @@ type guildDTO struct {
 	ReportFrequency string    `json:"report_frequency"`
 	KudosChannelID  string    `json:"kudos_channel_id"`
 	GamesEnabled    bool      `json:"games_enabled"`
-	WorkingDays     []int     `json:"working_days"` // ISO days, 1 is Monday and 7 Sunday
+	WorkingDays     []int     `json:"working_days"`   // ISO days, 1 is Monday and 7 Sunday
+	SurveyMessage   string    `json:"survey_message"` // "" means the default text
 	Active          bool      `json:"active"`
 	CreatedAt       time.Time `json:"created_at"`
 }
@@ -35,7 +36,7 @@ func toGuildDTO(g domain.Guild) guildDTO {
 		Anonymous: g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency),
 		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled,
-		WorkingDays: g.Settings.WorkingDays.ISO(), Active: g.Active, CreatedAt: g.CreatedAt,
+		WorkingDays: g.Settings.WorkingDays.ISO(), SurveyMessage: g.Settings.SurveyMessage, Active: g.Active, CreatedAt: g.CreatedAt,
 	}
 }
 
@@ -51,6 +52,7 @@ type memberDTO struct {
 	Username  string    `json:"username"`
 	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
+	Streak    int       `json:"streak,omitempty"` // only with ?with=streak
 }
 
 type moodDTO struct {
@@ -226,9 +228,17 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	// ?with=streak adds each member's answering streak, for a custom survey message that uses it.
+	var streaks map[string]int
+	if r.URL.Query().Get("with") == "streak" {
+		if streaks, err = s.svc.MemberStreaks(r.Context(), r.PathValue("guildID")); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
 	out := make([]memberDTO, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt})
+		out = append(out, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt, Streak: streaks[m.DiscordID]})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

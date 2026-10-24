@@ -33,14 +33,23 @@ func BuildEvolution(g Guild, entries []MoodEntry, from, to, today time.Time) Evo
 	if ev.Responses > 0 {
 		ev.Average = float64(sum) / float64(ev.Responses)
 	}
+	ev.Streak = Streak(g, answered, today)
+	return ev
+}
+
+// Streak counts how many days in a row up to today someone answered in g, given the days they
+// answered (UTC midnights). Not having answered yet today doesn't break it, and neither do the
+// guild's non-working days.
+func Streak(g Guild, answered map[time.Time]bool, today time.Time) int {
+	n := 0
 	d := TruncateDay(today)
 	if !answered[d] {
 		d = d.AddDate(0, 0, -1)
 	}
 	for ; answered[d] || !g.Settings.IsWorkingDay(d); d = d.AddDate(0, 0, -1) {
 		if answered[d] {
-			ev.Streak++
+			n++
 		}
 	}
-	return ev
+	return n
 }

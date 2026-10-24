@@ -235,6 +235,21 @@ func TestWebMyMoods(t *testing.T) {
 	if a["discord_guild_id"] != guildA || a["responses"].(float64) != 3 || a["average"].(float64) != 4 || a["streak"].(float64) != 3 {
 		t.Fatalf("server A: %v", a)
 	}
+	// The bot can ask for every member's streak, to fill {{user.streak}}.
+	var members []map[string]any
+	if raw, err := doRaw(t, srv, "GET", "/v1/guilds/"+guildA+"/members?with=streak"); err != nil || json.Unmarshal([]byte(raw), &members) != nil {
+		t.Fatalf("members with streak: %v %s", err, raw)
+	}
+	streaks := map[any]any{}
+	for _, m := range members {
+		streaks[m["discord_user_id"]] = m["streak"]
+	}
+	if streaks[memberID] != 3.0 || streaks[other] != 1.0 {
+		t.Fatalf("streaks: %v", streaks)
+	}
+	if raw, _ := doRaw(t, srv, "GET", "/v1/guilds/"+guildA+"/members"); strings.Contains(raw, "streak") {
+		t.Fatalf("streak without asking: %s", raw)
+	}
 	entries := a["entries"].([]any)
 	if last := entries[len(entries)-1].(map[string]any); last["message"] != "regular" || last["day"] != "2026-10-22" {
 		t.Fatalf("server A entries: %v", entries)
@@ -289,8 +304,13 @@ func TestWebSettings(t *testing.T) {
 		g["report_frequency"] != "monthly" || g["anonymous"] != false || g["admin_discord_user_id"] != adminA {
 		t.Fatalf("admin A update: %d %v", code, g)
 	}
+	// A custom survey message is saved trimmed and the bot gets it as written.
+	msg := "👋 ¡Hola {{user.name}}! ¿Cómo estás hoy? ({{ guild.name }})"
+	if code, g := patchSettings(t, srv, a, guildA, jsonCT, `{"survey_message":"  `+msg+`\n"}`); code != 200 || g["survey_message"] != msg {
+		t.Fatalf("survey message: %d %v", code, g)
+	}
 	// The bot sees the change.
-	if code, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 200 || g["language"] != "es" {
+	if code, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 200 || g["language"] != "es" || g["survey_message"] != msg {
 		t.Fatalf("bot view after update: %d %v", code, g)
 	}
 	for _, c := range []struct {
@@ -304,6 +324,10 @@ func TestWebSettings(t *testing.T) {
 		{"bad timezone", guildA, jsonCT, `{"timezone":"Mars/Olympus"}`, 400},
 		{"no working days", guildA, jsonCT, `{"working_days":[]}`, 400},
 		{"bad working day", guildA, jsonCT, `{"working_days":[0,1]}`, 400},
+		{"unknown variable", guildA, jsonCT, `{"survey_message":"Hola {{user.nmae}}"}`, 400},
+		{"unclosed variable", guildA, jsonCT, `{"survey_message":"Hola {{user.name"}`, 400},
+		{"long survey message", guildA, jsonCT, `{"survey_message":"` + strings.Repeat("a", 501) + `"}`, 400},
+		{"default survey message", guildA, jsonCT, `{"survey_message":""}`, 200},
 		{"changing the report admin", guildA, jsonCT, `{"admin_discord_user_id":"` + adminB + `"}`, 400},
 	} {
 		if code, out := patchSettings(t, srv, a, c.guild, c.ct, c.body); code != c.want {

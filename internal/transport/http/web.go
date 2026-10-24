@@ -223,13 +223,14 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		ReportFrequency *string `json:"report_frequency"`
 		GamesEnabled    *bool   `json:"games_enabled"`
 		WorkingDays     *[]int  `json:"working_days"`
+		SurveyMessage   *string `json:"survey_message"` // "" goes back to the default text
 	}
 	if !decode(w, r, &in) {
 		return
 	}
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
-		GamesEnabled: in.GamesEnabled,
+		GamesEnabled: in.GamesEnabled, SurveyMessage: in.SurveyMessage,
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)
