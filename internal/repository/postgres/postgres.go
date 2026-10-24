@@ -75,14 +75,14 @@ type GuildRepo struct{ db *pgxpool.Pool }
 func NewGuildRepo(db *pgxpool.Pool) *GuildRepo { return &GuildRepo{db: db} }
 
 const guildCols = `discord_id, name, admin_discord_id, anonymous, timezone, survey_hour,
-	report_frequency, language, kudos_channel_id, games_enabled, working_days, active, created_at, updated_at`
+	report_frequency, language, kudos_channel_id, games_enabled, working_days, survey_message, active, created_at, updated_at`
 
 func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var g domain.Guild
 	var freq string
 	var workingDays int16
 	err := row.Scan(&g.DiscordID, &g.Name, &g.AdminDiscordID, &g.Settings.Anonymous,
-		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &workingDays, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &workingDays, &g.Settings.SurveyMessage, &g.Active, &g.CreatedAt, &g.UpdatedAt)
 	g.Settings.ReportFrequency = domain.ReportFrequency(freq)
 	g.Settings.WorkingDays = domain.Weekdays(workingDays)
 	return g, notFound(err)
@@ -147,11 +147,11 @@ func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s
 	return scanGuild(r.db.QueryRow(ctx, `
 		UPDATE guilds SET admin_discord_id = $2, anonymous = $3, timezone = $4, survey_hour = $5,
 		       report_frequency = $6, language = $7, kudos_channel_id = $8, games_enabled = $9,
-		       working_days = $10, updated_at = now()
+		       working_days = $10, survey_message = $11, updated_at = now()
 		WHERE discord_id = $1
 		RETURNING `+guildCols,
 		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID, s.GamesEnabled,
-		int16(s.WorkingDays)))
+		int16(s.WorkingDays), s.SurveyMessage))
 }
 
 func (r *GuildRepo) Deactivate(ctx context.Context, guildID string, at time.Time) error {
@@ -350,6 +350,49 @@ func (r *MoodRepo) ListBetween(ctx context.Context, guildID string, from, to tim
 		JOIN members m ON m.id = e.member_id
 		WHERE g.discord_id = $1 AND e.day BETWEEN $2 AND $3
 		ORDER BY e.day, e.id`, guildID, from, to)
+}
+
+// Streaks counts, for each active member of the guild, how many days in a row up to today they
+// answered, like domain.Streak but in the database, so a big guild sends back one number per
+// member instead of every answer. Answers are read from `from`.
+//
+// A streak ends at the member's latest missed day: the latest working day before today they
+// didn't answer (today itself can still be answered). The streak is then the answers after it.
+// Both steps walk the (member_id, day) index from today backwards, so the work grows with the
+// streaks, not with the guild's history.
+func (r *MoodRepo) Streaks(ctx context.Context, guildID string, workingDays domain.Weekdays, from, today time.Time) (map[string]int, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT m.discord_id, s.n
+		FROM members m
+		JOIN guilds g ON g.id = m.guild_id
+		CROSS JOIN LATERAL (
+			SELECT COALESCE((
+				SELECT d::date FROM generate_series($3::date - 1, $2::date, interval '-1 day') AS d
+				WHERE ($4::int >> EXTRACT(DOW FROM d)::int) & 1 = 1
+				  AND NOT EXISTS (SELECT 1 FROM mood_entries e WHERE e.member_id = m.id AND e.day = d::date)
+				ORDER BY d DESC LIMIT 1
+			), $2::date - 1) AS missed
+		) x
+		CROSS JOIN LATERAL (
+			SELECT count(*) AS n FROM mood_entries e
+			WHERE e.member_id = m.id AND e.day > x.missed AND e.day <= $3::date
+		) s
+		WHERE g.discord_id = $1 AND m.active AND s.n > 0`,
+		guildID, from, today, int(workingDays))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
 }
 
 func (r *MoodRepo) ListForUser(ctx context.Context, userID string, from, to time.Time) ([]domain.MoodEntry, error) {

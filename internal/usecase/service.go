@@ -78,6 +78,8 @@ type SettingsPatch struct {
 	KudosChannelID *string
 	GamesEnabled   *bool
 	WorkingDays    *domain.Weekdays
+	// SurveyMessage set to "" goes back to the default survey text.
+	SurveyMessage *string
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -109,6 +111,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.WorkingDays != nil {
 		st.WorkingDays = *p.WorkingDays
+	}
+	if p.SurveyMessage != nil {
+		st.SurveyMessage = strings.TrimSpace(*p.SurveyMessage)
 	}
 	if p.AdminDiscordID != nil {
 		g.AdminDiscordID = *p.AdminDiscordID
@@ -190,6 +195,21 @@ func (s *Service) ListMembers(ctx context.Context, guildID string) ([]domain.Mem
 		return nil, err
 	}
 	return s.members.ListActive(ctx, guildID)
+}
+
+// MemberStreaks returns, for each member who has one, how many days in a row up to today they
+// answered the survey in the guild. The bot uses it to fill {{user.streak}} in a member's own DM.
+func (s *Service) MemberStreaks(ctx context.Context, guildID string) (map[string]int, error) {
+	g, err := s.activeGuild(ctx, guildID)
+	if err != nil {
+		return nil, err
+	}
+	w := g.Settings.WorkingDays
+	if w == 0 {
+		w = domain.MondayToFriday
+	}
+	today := s.today(g)
+	return s.moods.Streaks(ctx, guildID, w, today.AddDate(0, 0, -streakWindow), today)
 }
 
 // --- Moods ---

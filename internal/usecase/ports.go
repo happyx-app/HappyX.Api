@@ -78,6 +78,9 @@ type MoodRepository interface {
 	ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.MoodEntry, error)
 	// ListForUser returns one person's own answers in every guild, oldest first.
 	ListForUser(ctx context.Context, userID string, from, to time.Time) ([]domain.MoodEntry, error)
+	// Streaks returns each active member's answering streak up to today (see domain.Streak),
+	// reading answers from `from`. Members without one are left out.
+	Streaks(ctx context.Context, guildID string, workingDays domain.Weekdays, from, today time.Time) (map[string]int, error)
 }
 
 type KudosRepository interface {

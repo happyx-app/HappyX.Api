@@ -74,6 +74,9 @@ type GuildSettings struct {
 	GamesEnabled bool
 	// WorkingDays are the days the daily survey goes out. Monday to Friday by default.
 	WorkingDays Weekdays
+	// SurveyMessage is the admin's own text for the daily survey, with {{placeholders}}. It is
+	// sent as written, in whatever language it was written in. Empty means the default text.
+	SurveyMessage string
 }
 
 // Weekdays is a set of days of the week, one bit per time.Weekday (bit 0 is Sunday).
@@ -143,6 +146,9 @@ func (s GuildSettings) Validate() error {
 	}
 	if s.WorkingDays == 0 || s.WorkingDays&^allWeekdays != 0 {
 		return invalid("working_days must have at least one day")
+	}
+	if err := ValidateSurveyMessage(s.SurveyMessage); err != nil {
+		return err
 	}
 	if !s.ReportFrequency.Valid() {
 		return invalid("report_frequency must be %q or %q", ReportWeekly, ReportMonthly)
