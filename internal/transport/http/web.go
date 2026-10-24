@@ -62,6 +62,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/guilds/{guildID}/game", s.requireViewer(s.webGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/answer", s.requireViewer(s.webAnswerGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/guesses", s.requireViewer(s.webGuessGame))
+	mux.Handle("PUT /web/guilds/{guildID}/game/proposal", s.requireViewer(s.webProposeQuestion))
 }
 
 func (s *Server) secureCookies() bool { return strings.HasPrefix(s.web.PublicURL, "https://") }

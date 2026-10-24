@@ -18,6 +18,9 @@ type gameRoundDTO struct {
 	LastDay        string `json:"last_day"`
 	Answers        int    `json:"answers"`
 	MinAnswers     int    `json:"min_answers"`
+	// Proposed is set when the question was drawn from the members' proposals; who proposed
+	// it stays a secret until the results.
+	Proposed bool `json:"proposed"`
 }
 
 func toGameRoundDTO(st usecase.GameRoundStatus) gameRoundDTO {
@@ -25,7 +28,7 @@ func toGameRoundDTO(st usecase.GameRoundStatus) gameRoundDTO {
 	return gameRoundDTO{
 		Week: r.Week.Format(dateLayout), Question: r.Question, Phase: string(st.Phase),
 		GuessingStarts: r.GuessingStarts().Format(dateLayout), LastDay: r.LastDay().Format(dateLayout),
-		Answers: st.Answers, MinAnswers: domain.MinGameAnswers,
+		Answers: st.Answers, MinAnswers: domain.MinGameAnswers, Proposed: r.Proposed,
 	}
 }
 
@@ -101,6 +104,25 @@ func (s *Server) answerGame(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"week": a.Week.Format(dateLayout), "answer": a.Text})
 }
 
+// proposeQuestion stores a member's question for next week's draw, from Discord: 403 for
+// someone who isn't taking part, 409 from Monday to Wednesday.
+func (s *Server) proposeQuestion(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Question string `json:"question"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	p, err := s.svc.ProposeQuestion(r.Context(), usecase.ProposeQuestionInput{
+		GuildID: r.PathValue("guildID"), UserID: r.PathValue("userID"), Text: in.Question,
+	})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"week": p.Week.Format(dateLayout), "question": p.Text})
+}
+
 // --- «Who's who?» game, on the dashboard ---
 
 type gamePlayerDTO struct {
@@ -139,6 +161,11 @@ type gameRoundViewDTO struct {
 	Players        []gamePlayerDTO   `json:"players"`
 	MyGuesses      map[string]string `json:"my_guesses"`
 	Ranking        []gameScoreDTO    `json:"ranking"`
+	// Proposed: a member proposed the question. ProposedBy says who, once the round is
+	// finished; MyQuestion tells the proposer it is theirs.
+	Proposed   bool           `json:"proposed"`
+	ProposedBy *gamePlayerDTO `json:"proposed_by,omitempty"`
+	MyQuestion bool           `json:"my_question"`
 }
 
 func toGameRoundViewDTO(rv *usecase.GameRoundView) *gameRoundViewDTO {
@@ -151,6 +178,10 @@ func toGameRoundViewDTO(rv *usecase.GameRoundView) *gameRoundViewDTO {
 		GuessingStarts: r.GuessingStarts().Format(dateLayout), LastDay: r.LastDay().Format(dateLayout),
 		Count: rv.Count, MinAnswers: domain.MinGameAnswers, MyAnswer: rv.MyAnswer.Text,
 		Answers: []gameAnswerDTO{}, Players: []gamePlayerDTO{}, MyGuesses: rv.MyGuesses, Ranking: []gameScoreDTO{},
+		Proposed: r.Proposed, MyQuestion: rv.MyQuestion,
+	}
+	if r.ProposerDiscordID != "" {
+		out.ProposedBy = &gamePlayerDTO{r.ProposerDiscordID, r.ProposerUsername}
 	}
 	for _, a := range rv.Answers {
 		d := gameAnswerDTO{ID: a.ID, Answer: a.Text, Mine: a.ID == rv.MyAnswer.ID, DiscordID: a.MemberDiscordID, Username: a.Username}
@@ -177,12 +208,20 @@ func (s *Server) webGame(w http.ResponseWriter, r *http.Request, v domain.Viewer
 		s.fail(w, r, err)
 		return
 	}
+	type proposalDTO struct {
+		Open  bool   `json:"open"`
+		Week  string `json:"week"`
+		Mine  string `json:"mine"`
+		Count int    `json:"count"`
+	}
 	writeJSON(w, http.StatusOK, struct {
 		DiscordGuildID string            `json:"discord_guild_id"`
 		Name           string            `json:"name"`
 		Current        *gameRoundViewDTO `json:"current"`
 		Previous       *gameRoundViewDTO `json:"previous"`
-	}{b.Guild.DiscordID, b.Guild.Name, toGameRoundViewDTO(b.Current), toGameRoundViewDTO(b.Previous)})
+		Proposal       proposalDTO       `json:"proposal"`
+	}{b.Guild.DiscordID, b.Guild.Name, toGameRoundViewDTO(b.Current), toGameRoundViewDTO(b.Previous),
+		proposalDTO{b.Proposal.Open, b.Proposal.Week.Format(dateLayout), b.Proposal.Mine, b.Proposal.Count}})
 }
 
 // webAnswerGame answers this week's question from the dashboard, for whoever missed the DM.
@@ -208,6 +247,31 @@ func (s *Server) webAnswerGame(w http.ResponseWriter, r *http.Request, v domain.
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"week": a.Week.Format(dateLayout), "answer": a.Text})
+}
+
+// webProposeQuestion proposes the viewer's question for next week's draw.
+func (s *Server) webProposeQuestion(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	if !requireJSON(w, r) {
+		return
+	}
+	var in struct {
+		Question string `json:"question"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	guildID := r.PathValue("guildID")
+	// Members who can't play get the same 404 as for a server they can't see.
+	if _, err := s.svc.GameBoard(r.Context(), v, guildID); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	p, err := s.svc.ProposeQuestion(r.Context(), usecase.ProposeQuestionInput{GuildID: guildID, UserID: v.DiscordID, Text: in.Question})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"week": p.Week.Format(dateLayout), "question": p.Text})
 }
 
 // webGuessGame replaces the viewer's guesses for this week: {"guesses": {answerID: userID}}.

@@ -55,6 +55,11 @@ right guesses, then fewest guesses) come out once the week is over, so game answ
 anonymous and members are told so. Members who paused HappyX in the guild don't get the question,
 can't play, and their answers and guesses drop out of the round.
 
+From Thursday to Sunday members can also propose next week's question, one each (proposing again
+replaces it), from the bot's Thursday DM or the web. On Monday one of them is drawn at random for
+the round, whatever question the bot sent; with no proposals the bot's question is used. Who
+proposed it stays secret until the results, when it comes out with the authors.
+
 ## Credentials
 
 All secrets come from environment variables; nothing is read from files in the repo.
@@ -104,6 +109,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/guilds/{guildID}/game` | `{current, previous}`: this week's round and last week's, as the member sees them (authors only once finished). 404 unless games are on and the user takes part |
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
+| PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
 | PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`, `working_days`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
@@ -129,9 +135,10 @@ doesn't break it.
 | PUT | `/v1/guilds/{guildID}/members/{userID}/mood` | `mood` (1-5), `message` (optional, ≤500), `day` (optional `YYYY-MM-DD`) | one answer per day; answering again replaces it |
 | GET | `/v1/guilds/{guildID}/report` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` | without a range: last complete week or month |
 | POST | `/v1/guilds/{guildID}/kudos` | `from_discord_user_id`, `to_discord_user_id`, `message` (1-300) | 201 with the kudos and both usernames. Both must be known members (paused is fine), not the same person; at most 10 per giver per day (429) |
-| POST | `/v1/guilds/{guildID}/game/rounds` | `week` (a Monday, `YYYY-MM-DD`), `question` (1-300) | starts the week's round, Monday to Wednesday; idempotent (keeps the first question). 409 when games are off or answering is over |
+| POST | `/v1/guilds/{guildID}/game/rounds` | `week` (a Monday, `YYYY-MM-DD`), `question` (1-300) | starts the week's round, Monday to Wednesday, with a proposed question if there are any (`proposed`); idempotent (keeps the first question). 409 when games are off or answering is over |
 | GET | `/v1/guilds/{guildID}/game/rounds/{week}` | | `phase` (`answering`/`guessing`/`finished`), `answers` count, `guessing_starts`, `last_day` |
 | PUT | `/v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}` | `answer` (1-200) | replaces an earlier answer. 403 for paused members, 409 once answering is over |
+| PUT | `/v1/guilds/{guildID}/game/proposals/{userID}` | `question` (1-200) | proposes next week's question, replacing an earlier one; returns its `week`. 403 for paused members, 409 Monday to Wednesday |
 | POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`/`game`/`game_guess`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent. Makes scheduled sends exactly-once across restarts |
 
 Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, dispatch already claimed, games off or game step closed), 429 (kudos limit).

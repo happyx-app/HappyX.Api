@@ -50,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /v1/guilds/{guildID}/game/rounds", s.startGameRound)
 	api.HandleFunc("GET /v1/guilds/{guildID}/game/rounds/{week}", s.gameRound)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}", s.answerGame)
+	api.HandleFunc("PUT /v1/guilds/{guildID}/game/proposals/{userID}", s.proposeQuestion)
 	mux.Handle("/v1/", s.requireKey(api))
 	if s.web != nil {
 		s.webRoutes(mux)

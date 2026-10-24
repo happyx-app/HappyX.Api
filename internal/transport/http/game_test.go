@@ -61,6 +61,9 @@ func TestGameFlow(t *testing.T) {
 
 	m := newWebClient(t)
 	login(t, srv, m, "member")
+	if code, _ := send(t, m, "PUT", srv.URL+"/web/guilds/"+guildA+"/game/proposal", "application/json", `{"question":"¿Pronto?"}`); code != 409 {
+		t.Fatalf("proposing on Monday: %d", code)
+	}
 	if code, out := send(t, m, "PUT", srv.URL+"/web/guilds/"+guildA+"/game/answer", "application/json", `{"answer":"Bombera"}`); code != 200 || out["answer"] != "Bombera" {
 		t.Fatalf("web answer: %d %v", code, out)
 	}
@@ -104,6 +107,23 @@ func TestGameFlow(t *testing.T) {
 	if code, _ := send(t, m, "PUT", srv.URL+"/web/guilds/"+guildA+"/game/answer", "application/json", `{"answer":"tarde"}`); code != 409 {
 		t.Fatalf("answering on Thursday: %d", code)
 	}
+	// Proposing next week's question, from the web and from Discord.
+	if code, out := send(t, m, "PUT", srv.URL+"/web/guilds/"+guildA+"/game/proposal", "application/json", `{"question":"¿Tu primer concierto?"}`); code != 200 || out["week"] != "2026-10-26" {
+		t.Fatalf("web proposal: %d %v", code, out)
+	}
+	if code, out := do(t, srv, "PUT", "/v1/guilds/"+guildA+"/game/proposals/"+p2, key, `{"question":"¿Tu olor favorito?"}`); code != 200 {
+		t.Fatalf("bot proposal: %d %v", code, out)
+	}
+	if code, _ := do(t, srv, "PUT", "/v1/guilds/"+guildA+"/game/proposals/"+adminA, key, `{"question":"x"}`); code != 403 {
+		t.Fatalf("proposal by a non-member: %d", code)
+	}
+	if code, _ := send(t, admin, "PUT", srv.URL+"/web/guilds/"+guildA+"/game/proposal", "application/json", `{"question":"x"}`); code != 404 {
+		t.Fatalf("web proposal by a non-member: %d", code)
+	}
+	_, board = get(t, m, srv.URL+"/web/guilds/"+guildA+"/game")
+	if p := board["proposal"].(map[string]any); p["open"] != true || p["week"] != "2026-10-26" || p["mine"] != "¿Tu primer concierto?" || p["count"].(float64) != 2 {
+		t.Fatalf("proposal box: %v", p)
+	}
 
 	// Next Monday: last week's results.
 	now = time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
@@ -117,5 +137,30 @@ func TestGameFlow(t *testing.T) {
 		if a.(map[string]any)["username"] == nil {
 			t.Fatalf("author hidden after the round: %v", a)
 		}
+	}
+	if prev["proposed"] != false || prev["proposed_by"] != nil {
+		t.Fatalf("the bot's question shows as proposed: %v", prev)
+	}
+
+	// This week's question is drawn from the proposals, and who proposed it stays secret.
+	if code, out := do(t, srv, "POST", "/v1/guilds/"+guildA+"/game/rounds", key, `{"week":"2026-10-26","question":"La del bot"}`); code != 200 || out["proposed"] != true {
+		t.Fatalf("start a proposed round: %d %v", code, out)
+	}
+	_, board = get(t, m, srv.URL+"/web/guilds/"+guildA+"/game")
+	cur = board["current"].(map[string]any)
+	mine := cur["question"] == "¿Tu primer concierto?"
+	if !mine && cur["question"] != "¿Tu olor favorito?" || cur["proposed"] != true || cur["my_question"] != mine || cur["proposed_by"] != nil {
+		t.Fatalf("proposed round: %v", cur)
+	}
+	if p := board["proposal"].(map[string]any); p["open"] != false || p["week"] != "2026-11-02" || p["count"].(float64) != 0 {
+		t.Fatalf("next week's proposals: %v", p)
+	}
+
+	// Once it is over, the proposer comes out with the results.
+	now = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	_, board = get(t, m, srv.URL+"/web/guilds/"+guildA+"/game")
+	by, _ := board["previous"].(map[string]any)["proposed_by"].(map[string]any)
+	if want := map[bool]string{true: memberID, false: p2}[mine]; by["discord_user_id"] != want {
+		t.Fatalf("proposer after the round: %v, want %s", board["previous"], want)
 	}
 }

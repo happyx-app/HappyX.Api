@@ -41,3 +41,11 @@ func TestRanking(t *testing.T) {
 		}
 	}
 }
+
+func TestProposalsOpen(t *testing.T) {
+	for day, want := range map[int]bool{19: false, 21: false, 22: true, 25: true, 26: false} {
+		if got := ProposalsOpen(time.Date(2026, 10, day, 0, 0, 0, 0, time.UTC)); got != want {
+			t.Errorf("October %d: %v, want %v", day, got, want)
+		}
+	}
+}
