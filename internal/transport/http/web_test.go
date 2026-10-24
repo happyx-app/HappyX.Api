@@ -32,6 +32,8 @@ func (fakeDiscord) AuthURL(state string) string {
 	return "https://discord.test/authorize?state=" + state
 }
 
+func (fakeDiscord) InviteURL() string { return "https://discord.test/invite" }
+
 func (fakeDiscord) Viewer(_ context.Context, code string) (domain.Viewer, error) {
 	switch code {
 	case "adminA":
@@ -118,6 +120,10 @@ func TestWebDashboard(t *testing.T) {
 	}
 	if res, _ := get(t, anon, srv.URL+"/web/me"); res.StatusCode != 401 {
 		t.Fatal("forged state logged the user in")
+	}
+	// Adding the bot needs no login.
+	if res, _ := get(t, anon, srv.URL+"/web/auth/invite"); res.StatusCode != http.StatusFound || res.Header.Get("Location") != "https://discord.test/invite" {
+		t.Fatalf("invite: %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
 	// The bot's API key does not open the dashboard routes, and a session doesn't open /v1.
 	if code, _ := do(t, srv, "GET", "/web/me", key, ""); code != 401 {

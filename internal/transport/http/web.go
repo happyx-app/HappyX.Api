@@ -20,6 +20,7 @@ import (
 // Identity logs users in with Discord.
 type Identity interface {
 	AuthURL(state string) string
+	InviteURL() string
 	Viewer(ctx context.Context, code string) (domain.Viewer, error)
 }
 
@@ -53,6 +54,7 @@ func (s *Server) WithWeb(w Web) *Server {
 
 func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /web/auth/login", s.webLogin)
+	mux.HandleFunc("GET /web/auth/invite", s.webInvite)
 	mux.HandleFunc("GET /web/auth/callback", s.webCallback)
 	mux.HandleFunc("POST /web/auth/logout", s.webLogout)
 	mux.Handle("GET /web/me", s.requireViewer(s.webMe))
@@ -91,6 +93,11 @@ func (s *Server) webLogin(w http.ResponseWriter, r *http.Request) {
 	state := hex.EncodeToString(b)
 	s.setCookie(w, stateCookie, state, 10*time.Minute)
 	http.Redirect(w, r, s.web.Identity.AuthURL(state), http.StatusFound)
+}
+
+// webInvite sends the landing page's "Add to Discord" button to Discord, which needs no login.
+func (s *Server) webInvite(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, s.web.Identity.InviteURL(), http.StatusFound)
 }
 
 func (s *Server) webCallback(w http.ResponseWriter, r *http.Request) {
