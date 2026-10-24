@@ -10,17 +10,11 @@ type Viewer struct {
 	ManagedGuilds []string
 }
 
-// CanView reports whether the viewer may see the guild's moods and reports: they are the admin
-// the bot sends reports to, or an owner or Administrator of the server.
-func (v Viewer) CanView(g Guild) bool {
-	if v.DiscordID == "" {
-		return false
-	}
-	if g.AdminDiscordID == v.DiscordID {
-		return true
-	}
+// ManagesInDiscord reports whether the viewer owns the guild or is one of its Discord
+// Administrators.
+func (v Viewer) ManagesInDiscord(guildID string) bool {
 	for _, id := range v.ManagedGuilds {
-		if id == g.DiscordID {
+		if id == guildID {
 			return true
 		}
 	}

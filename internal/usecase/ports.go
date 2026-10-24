@@ -13,13 +13,13 @@ import (
 // so implementations can (and must) scope each query to a single guild.
 
 type GuildRepository interface {
-	// Upsert creates the guild or, if it exists, updates its name and admin and reactivates it.
-	// Existing settings are kept on update.
+	// Upsert creates the guild or, if it exists, updates its name and reactivates it. The
+	// admin and settings of an existing guild are kept.
 	Upsert(ctx context.Context, g domain.Guild) (domain.Guild, error)
 	Get(ctx context.Context, guildID string) (domain.Guild, error)
 	ListActive(ctx context.Context) ([]domain.Guild, error)
-	// ListVisible returns the active guilds whose admin is userID or whose Discord ID is in
-	// guildIDs.
+	// ListVisible returns the active guilds whose admin is userID, whose Discord ID is in
+	// guildIDs, or where userID is in the server and has a grant, directly or through a role.
 	ListVisible(ctx context.Context, userID string, guildIDs []string) ([]domain.Guild, error)
 	// ListJoined returns the active guilds where userID is a member taking part (not paused).
 	ListJoined(ctx context.Context, userID string) ([]domain.Guild, error)
@@ -49,7 +49,21 @@ type MemberRepository interface {
 	Upsert(ctx context.Context, m domain.Member, setActive *bool) (domain.Member, error)
 	Get(ctx context.Context, guildID, userID string) (domain.Member, error)
 	ListActive(ctx context.Context, guildID string) ([]domain.Member, error)
+	// ListInServer returns the members still in the Discord server, opted in or not, by name.
+	ListInServer(ctx context.Context, guildID string) ([]domain.Member, error)
 	Deactivate(ctx context.Context, guildID, userID string) error
+	// Left deactivates the member and records they left the Discord server.
+	Left(ctx context.Context, guildID, userID string) error
+}
+
+type AccessRepository interface {
+	// ReplaceRoles sets the guild's roles and drops the grants to roles that no longer exist.
+	ReplaceRoles(ctx context.Context, guildID string, roles []domain.Role) error
+	// ListRoles returns the guild's roles, highest first as in Discord.
+	ListRoles(ctx context.Context, guildID string) ([]domain.Role, error)
+	ListGrants(ctx context.Context, guildID string) ([]domain.AccessGrant, error)
+	// SetAccess sets the guild's main admin and replaces its grants in one write.
+	SetAccess(ctx context.Context, guildID, adminID string, grants []domain.AccessGrant) error
 }
 
 type DispatchRepository interface {

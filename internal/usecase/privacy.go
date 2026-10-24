@@ -31,10 +31,10 @@ func (s *Service) EraseMyData(ctx context.Context, v domain.Viewer, confirmName 
 	return s.privacy.EraseUser(ctx, v.DiscordID)
 }
 
-// GuildExport returns the guild's data for someone who may see its dashboard, with the same
+// GuildExport returns the guild's data for an owner (see domain.AccessOwner), with the same
 // anonymity as the dashboard (see domain.BuildGuildExport).
 func (s *Service) GuildExport(ctx context.Context, v domain.Viewer, guildID string) (domain.GuildExport, error) {
-	g, err := s.ViewerGuild(ctx, v, guildID)
+	g, err := s.ViewerGuild(ctx, v, guildID, domain.AccessOwner)
 	if err != nil {
 		return domain.GuildExport{}, err
 	}

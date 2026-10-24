@@ -94,7 +94,7 @@ func (r *GuildRepo) Upsert(ctx context.Context, g domain.Guild) (domain.Guild, e
 		INSERT INTO guilds (discord_id, name, admin_discord_id, anonymous, timezone, survey_hour, report_frequency, language, working_days)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (discord_id) DO UPDATE
-		SET name = EXCLUDED.name, admin_discord_id = EXCLUDED.admin_discord_id,
+		SET name = EXCLUDED.name,
 		    active = TRUE, left_at = NULL, updated_at = now()
 		RETURNING `+guildCols,
 		g.DiscordID, g.Name, g.AdminDiscordID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, int16(s.WorkingDays)))
@@ -112,8 +112,12 @@ func (r *GuildRepo) ListVisible(ctx context.Context, userID string, guildIDs []s
 	if guildIDs == nil {
 		guildIDs = []string{}
 	}
-	return r.list(ctx, `SELECT `+guildCols+` FROM guilds
-		WHERE active AND (admin_discord_id = $1 OR discord_id = ANY($2)) ORDER BY name, id`, userID, guildIDs)
+	return r.list(ctx, `SELECT `+guildCols+` FROM guilds g
+		WHERE active AND (admin_discord_id = $1 OR discord_id = ANY($2) OR EXISTS (
+		    SELECT 1 FROM members m JOIN access_grants a ON a.guild_id = m.guild_id
+		    WHERE m.guild_id = g.id AND m.discord_id = $1 AND m.in_server
+		      AND ((a.kind = 'user' AND a.target_id = $1) OR (a.kind = 'role' AND a.target_id = ANY(m.role_ids)))
+		)) ORDER BY name, id`, userID, guildIDs)
 }
 
 func (r *GuildRepo) ListJoined(ctx context.Context, userID string) ([]domain.Guild, error) {
@@ -216,11 +220,11 @@ type MemberRepo struct{ db *pgxpool.Pool }
 
 func NewMemberRepo(db *pgxpool.Pool) *MemberRepo { return &MemberRepo{db: db} }
 
-const memberCols = `g.discord_id, m.discord_id, m.username, m.active, m.created_at`
+const memberCols = `g.discord_id, m.discord_id, m.username, m.active, m.role_ids, m.in_server, m.created_at`
 
 func scanMember(row pgx.Row) (domain.Member, error) {
 	var m domain.Member
-	err := row.Scan(&m.GuildDiscordID, &m.DiscordID, &m.Username, &m.Active, &m.CreatedAt)
+	err := row.Scan(&m.GuildDiscordID, &m.DiscordID, &m.Username, &m.Active, &m.RoleIDs, &m.InServer, &m.CreatedAt)
 	return m, notFound(err)
 }
 
@@ -228,16 +232,18 @@ func (r *MemberRepo) Upsert(ctx context.Context, m domain.Member, setActive *boo
 	return scanMember(r.db.QueryRow(ctx, `
 		WITH g AS (SELECT id, discord_id FROM guilds WHERE discord_id = $1),
 		     m AS (
-		         INSERT INTO members (guild_id, discord_id, username, active)
-		         SELECT g.id, $2, $3, COALESCE($4::boolean, TRUE) FROM g
+		         INSERT INTO members (guild_id, discord_id, username, active, role_ids)
+		         SELECT g.id, $2, $3, COALESCE($4::boolean, TRUE), COALESCE($5::text[], '{}') FROM g
 		         ON CONFLICT (guild_id, discord_id) DO UPDATE
 		         SET username = EXCLUDED.username,
 		             active = COALESCE($4::boolean, members.active),
+		             role_ids = COALESCE($5::text[], members.role_ids),
+		             in_server = TRUE,
 		             updated_at = now()
 		         RETURNING *
 		     )
 		SELECT `+memberCols+` FROM m JOIN g ON g.id = m.guild_id`,
-		m.GuildDiscordID, m.DiscordID, m.Username, setActive))
+		m.GuildDiscordID, m.DiscordID, m.Username, setActive, m.RoleIDs))
 }
 
 func (r *MemberRepo) Get(ctx context.Context, guildID, userID string) (domain.Member, error) {
@@ -247,9 +253,19 @@ func (r *MemberRepo) Get(ctx context.Context, guildID, userID string) (domain.Me
 }
 
 func (r *MemberRepo) ListActive(ctx context.Context, guildID string) ([]domain.Member, error) {
-	rows, err := r.db.Query(ctx, `
+	return r.list(ctx, `
 		SELECT `+memberCols+` FROM members m JOIN guilds g ON g.id = m.guild_id
 		WHERE g.discord_id = $1 AND m.active ORDER BY m.id`, guildID)
+}
+
+func (r *MemberRepo) ListInServer(ctx context.Context, guildID string) ([]domain.Member, error) {
+	return r.list(ctx, `
+		SELECT `+memberCols+` FROM members m JOIN guilds g ON g.id = m.guild_id
+		WHERE g.discord_id = $1 AND m.in_server ORDER BY lower(m.username), m.id`, guildID)
+}
+
+func (r *MemberRepo) list(ctx context.Context, sql string, args ...any) ([]domain.Member, error) {
+	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -266,10 +282,18 @@ func (r *MemberRepo) ListActive(ctx context.Context, guildID string) ([]domain.M
 }
 
 func (r *MemberRepo) Deactivate(ctx context.Context, guildID, userID string) error {
+	return r.deactivate(ctx, guildID, userID, false)
+}
+
+func (r *MemberRepo) Left(ctx context.Context, guildID, userID string) error {
+	return r.deactivate(ctx, guildID, userID, true)
+}
+
+func (r *MemberRepo) deactivate(ctx context.Context, guildID, userID string, left bool) error {
 	tag, err := r.db.Exec(ctx, `
-		UPDATE members m SET active = FALSE, updated_at = now()
+		UPDATE members m SET active = FALSE, in_server = in_server AND NOT $3, updated_at = now()
 		FROM guilds g
-		WHERE g.id = m.guild_id AND g.discord_id = $1 AND m.discord_id = $2`, guildID, userID)
+		WHERE g.id = m.guild_id AND g.discord_id = $1 AND m.discord_id = $2`, guildID, userID, left)
 	if err != nil {
 		return err
 	}

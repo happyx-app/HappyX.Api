@@ -33,7 +33,7 @@ func testServiceClock(t *testing.T, now usecase.Clock) *usecase.Service {
 	}
 	t.Cleanup(pool.Close)
 	reset(t, pool)
-	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool), NewGameRepo(pool), NewPrivacyRepo(pool), now)
+	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool), NewGameRepo(pool), NewAccessRepo(pool), NewPrivacyRepo(pool), now)
 }
 
 func reset(t *testing.T, pool *pgxpool.Pool) {
@@ -85,7 +85,7 @@ func TestGuildLifecycle(t *testing.T) {
 	if err != nil || len(active) != 0 {
 		t.Fatalf("removed guild still active: %v %v", active, err)
 	}
-	if _, err := svc.UpsertMember(ctx, guildA, user1, "u1", nil); !errors.Is(err, domain.ErrInactive) {
+	if _, err := svc.UpsertMember(ctx, guildA, user1, "u1", nil, nil); !errors.Is(err, domain.ErrInactive) {
 		t.Fatalf("join on inactive guild: want ErrInactive, got %v", err)
 	}
 }
@@ -237,7 +237,7 @@ func TestGuildIsolation(t *testing.T) {
 		t.Fatalf("cross-guild answer: want ErrNotAMember, got %v", err)
 	}
 	// Leaving guild A does not affect membership in guild B.
-	if err := svc.LeaveMember(ctx, guildA, user1); err != nil {
+	if err := svc.LeaveMember(ctx, guildA, user1, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildB, UserID: user1, Mood: domain.MoodGood}); err != nil {
@@ -268,7 +268,7 @@ func TestKudosIsolation(t *testing.T) {
 		t.Fatalf("cross-guild kudos: want ErrNotAMember, got %v", err)
 	}
 	// Pausing the survey doesn't stop anyone from getting kudos.
-	if err := svc.LeaveMember(ctx, guildA, user2); err != nil {
+	if err := svc.LeaveMember(ctx, guildA, user2, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := give(guildA, user1, user2); err != nil {
@@ -301,7 +301,7 @@ func mustRegister(t *testing.T, svc *usecase.Service, guild string) {
 
 func mustJoin(t *testing.T, svc *usecase.Service, guild, user string) {
 	t.Helper()
-	if _, err := svc.UpsertMember(context.Background(), guild, user, "user"+user[len(user)-1:], nil); err != nil {
+	if _, err := svc.UpsertMember(context.Background(), guild, user, "user"+user[len(user)-1:], nil, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -340,11 +340,11 @@ func TestSyncKeepsOptOut(t *testing.T) {
 	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
 	mustRegister(t, svc, guildA)
 	mustJoin(t, svc, guildA, user1)
-	if err := svc.LeaveMember(ctx, guildA, user1); err != nil {
+	if err := svc.LeaveMember(ctx, guildA, user1, false); err != nil {
 		t.Fatal(err)
 	}
 	// A member list sync (active nil) must not re-subscribe them.
-	m, err := svc.UpsertMember(ctx, guildA, user1, "renamed", nil)
+	m, err := svc.UpsertMember(ctx, guildA, user1, "renamed", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestSyncKeepsOptOut(t *testing.T) {
 		t.Fatalf("sync should update the name but keep the opt-out: %+v", m)
 	}
 	yes := true
-	if m, err = svc.UpsertMember(ctx, guildA, user1, "renamed", &yes); err != nil || !m.Active {
+	if m, err = svc.UpsertMember(ctx, guildA, user1, "renamed", &yes, nil); err != nil || !m.Active {
 		t.Fatalf("explicit opt-in should reactivate: %+v %v", m, err)
 	}
 }

@@ -83,7 +83,7 @@ func TestGameRound(t *testing.T) {
 	if err := answer(guildA, user2, "x"); !errors.Is(err, domain.ErrClosed) {
 		t.Fatalf("answering on Thursday: %v", err)
 	}
-	if err := svc.LeaveMember(ctx, guildA, user4); err != nil {
+	if err := svc.LeaveMember(ctx, guildA, user4, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.GameBoard(ctx, domain.Viewer{DiscordID: user4}, guildA); !errors.Is(err, domain.ErrNotFound) {

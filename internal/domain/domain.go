@@ -22,6 +22,8 @@ var (
 	ErrGamesOff = errors.New("games are turned off in this guild")
 	// ErrRemoving means the guild was deleted from HappyX and the bot is about to leave it.
 	ErrRemoving = errors.New("guild was deleted from HappyX")
+	// ErrForbidden means the person can see the guild but not do this with it.
+	ErrForbidden = errors.New("not allowed")
 )
 
 // ValidationError wraps ErrInvalid with a human readable reason.
@@ -192,7 +194,12 @@ type Member struct {
 	DiscordID      string
 	Username       string
 	Active         bool
-	CreatedAt      time.Time
+	// RoleIDs are the member's Discord roles, as the bot last saw them. In an Upsert, nil keeps
+	// the stored ones.
+	RoleIDs []string
+	// InServer is false once the member left the Discord server.
+	InServer  bool
+	CreatedAt time.Time
 }
 
 func (m Member) Validate() error {
@@ -205,7 +212,7 @@ func (m Member) Validate() error {
 	if utf8.RuneCountInString(m.Username) > 100 {
 		return invalid("username must be at most 100 characters")
 	}
-	return nil
+	return ValidateRoleIDs(m.RoleIDs)
 }
 
 // Mood is the 1-5 answer to "how are you today?".
