@@ -22,7 +22,7 @@ func (r *AccessRepo) ReplaceRoles(ctx context.Context, guildID string, roles []d
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
 	var gid int64
-	if err := tx.QueryRow(ctx, `SELECT id FROM guilds WHERE discord_id = $1`, guildID).Scan(&gid); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id FROM guilds WHERE discord_id = $1 FOR KEY SHARE`, guildID).Scan(&gid); err != nil {
 		return notFound(err)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM guild_roles WHERE guild_id = $1`, gid); err != nil {

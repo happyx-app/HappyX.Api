@@ -253,7 +253,8 @@ func (r *MemberRepo) SyncMany(ctx context.Context, guildID string, ms []domain.M
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
 	var gid int64
-	if err := tx.QueryRow(ctx, `SELECT id FROM guilds WHERE discord_id = $1`, guildID).Scan(&gid); err != nil {
+	// Locked first so deleting the guild waits for the sync instead of deadlocking with it.
+	if err := tx.QueryRow(ctx, `SELECT id FROM guilds WHERE discord_id = $1 FOR KEY SHARE`, guildID).Scan(&gid); err != nil {
 		return notFound(err)
 	}
 	b := &pgx.Batch{}
