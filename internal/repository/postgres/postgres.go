@@ -447,17 +447,23 @@ func (r *GameRepo) CreateRound(ctx context.Context, rd domain.GameRound) (domain
 	return r.GetRound(ctx, rd.GuildDiscordID, rd.Week)
 }
 
-func (r *GameRepo) GetRound(ctx context.Context, guildID string, week time.Time) (domain.GameRound, error) {
+// gameRoundCols needs members m LEFT JOINed on the proposer.
+const gameRoundCols = `g.discord_id, rd.week, rd.question, COALESCE(m.discord_id, ''), COALESCE(m.username, ''),
+	rd.proposer_member_id IS NOT NULL, rd.created_at`
+
+func scanGameRound(row pgx.Row) (domain.GameRound, error) {
 	var rd domain.GameRound
-	err := r.db.QueryRow(ctx, `
-		SELECT g.discord_id, rd.week, rd.question, COALESCE(m.discord_id, ''), COALESCE(m.username, ''),
-		       rd.proposer_member_id IS NOT NULL, rd.created_at
-		FROM game_rounds rd JOIN guilds g ON g.id = rd.guild_id
-		LEFT JOIN members m ON m.id = rd.proposer_member_id
-		WHERE g.discord_id = $1 AND rd.week = $2`, guildID, week).
-		Scan(&rd.GuildDiscordID, &rd.Week, &rd.Question, &rd.ProposerDiscordID, &rd.ProposerUsername, &rd.Proposed, &rd.CreatedAt)
+	err := row.Scan(&rd.GuildDiscordID, &rd.Week, &rd.Question, &rd.ProposerDiscordID, &rd.ProposerUsername, &rd.Proposed, &rd.CreatedAt)
 	rd.Week = domain.TruncateDay(rd.Week)
 	return rd, notFound(err)
+}
+
+func (r *GameRepo) GetRound(ctx context.Context, guildID string, week time.Time) (domain.GameRound, error) {
+	return scanGameRound(r.db.QueryRow(ctx, `
+		SELECT `+gameRoundCols+`
+		FROM game_rounds rd JOIN guilds g ON g.id = rd.guild_id
+		LEFT JOIN members m ON m.id = rd.proposer_member_id
+		WHERE g.discord_id = $1 AND rd.week = $2`, guildID, week))
 }
 
 const gameAnswerCols = `a.ref::text, g.discord_id, rd.week, m.discord_id, m.username, a.answer, a.created_at, a.updated_at`
