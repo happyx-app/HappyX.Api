@@ -46,6 +46,20 @@ func (o *OAuth) AuthURL(state string) string {
 	return "https://discord.com/oauth2/authorize?" + q.Encode()
 }
 
+// botPermissions are what the bot asks for when it's added: View Channel, Send Messages and
+// Embed Links, so kudos can be posted in a kudos channel. Surveys and reports go by DM.
+const botPermissions = 1<<10 | 1<<11 | 1<<14
+
+// InviteURL adds the bot to a server. The dashboard and the bot share one Discord application.
+func (o *OAuth) InviteURL() string {
+	q := url.Values{
+		"client_id":   {o.ClientID},
+		"scope":       {"bot applications.commands"},
+		"permissions": {strconv.Itoa(botPermissions)},
+	}
+	return "https://discord.com/oauth2/authorize?" + q.Encode()
+}
+
 // Viewer exchanges the authorization code and reads who the user is and which servers they
 // manage. The Discord token is used only here and never stored.
 func (o *OAuth) Viewer(ctx context.Context, code string) (domain.Viewer, error) {
