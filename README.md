@@ -12,8 +12,6 @@ mixing their data.
 cmd/api                      entry point (config, wiring, graceful shutdown)
 internal/domain              entities and rules (Guild, Member, MoodEntry, Report); no dependencies
 internal/usecase             application logic + repository interfaces (ports)
-internal/plaza               the servers' real-time squares (in memory, no I/O)
-internal/launch              «El gran lanzamiento», the office game played from a square
 internal/repository/postgres PostgreSQL adapters (pgx) and embedded migrations runner
 internal/transport/http      JSON REST handlers and API key middleware
 migrations                   SQL migrations, applied automatically on startup
@@ -106,7 +104,6 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/guilds/{guildID}/game` | `{current, previous}`: this week's round and last week's, as the member sees them (authors only once finished). 404 unless games are on and the user takes part |
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
-| GET | `/web/guilds/{guildID}/plaza` | WebSocket into the server's square (below). 404 unless games are on and the user takes part |
 | PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`, `working_days`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
@@ -115,55 +112,6 @@ consecutive days answered up to today in the server's timezone; not having answe
 doesn't break it.
 
 `/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.
-
-### The square (plaza)
-
-A small map where the members who have the web open walk around as their Discord avatar and
-greet each other with emotes. It is the lobby for the team games, behind the same
-`games_enabled` switch and open to the same members.
-
-The API is authoritative: `internal/plaza` keeps each square in memory and moves it 20 times a
-second, and the web only sends what the player pressed. Each server has its own squares; past 30
-people a parallel square of the same server opens. One avatar per person: opening the square in
-another tab closes the first. Nothing is stored, so a restart empties the squares.
-
-The WebSocket only accepts the dashboard's own origin. Messages are JSON text frames of at most
-1 KB, 30 a second at most; a connection that can't keep up with the square is dropped.
-
-| From | Message | Fields |
-| --- | --- | --- |
-| web | `move` | `dx`, `dy`: -1, 0 or 1 (keys held; 0, 0 stops) |
-| web | `goto` | `x`, `y`: walk to that point (taps) |
-| web | `emote` | `e`: `wave`, `clap`, `laugh`, `heart`, `coffee` or `highfive` |
-| API | `welcome` | `you`, `world` (`w`, `h`, `radius`, `obstacles`), `players` |
-| API | `join` / `leave` | `player` / `id` |
-| API | `state` | `p`: every avatar's `id`, `x`, `y`, sent on ticks where someone moved |
-| API | `emote` | `id`, `e` |
-| API | `high_five` | `a`, `b`: two avatars within 80 units both raised a hand within 3 s |
-
-Close codes: 4000 opened elsewhere, 4001 too slow, 1001 the API is shutting down.
-
-### El gran lanzamiento
-
-The office game, started by hand from the square by a server admin (the `host` flag on their
-player) with 3 to 10 people in it. One player is the manager: they sit in the boss's office, see
-everything and give orders but can't move. The others are workers: they walk the office on a
-grid, see only what is within 3.5 tiles and their own order, and pick up and deliver by walking
-next to the station and then the room's table. 3 rounds of 4 minutes, a new manager each round.
-`internal/launch` runs it inside the square's tick and filters what each player sees, so the
-browser never gets what its player shouldn't know. A player who drops out keeps their place for
-10 s. Nothing is stored yet.
-
-| From | Message | Fields |
-| --- | --- | --- |
-| web | `launch` / `stop` | host only |
-| web | `g_move` | `dx`, `dy`: keys held, one tile at a time |
-| web | `g_goto` | `x`, `y`: a tile; a station or table means the tile beside it |
-| web | `order` | `w`, `task`: the manager gives a task to a worker (`task` 0 takes it back) |
-| API | `game_start` | `map` (tiles, rooms, stations, tables, seat), `players` |
-| API | `game` | 20 a second, per player: `phase`, `round`, `left`, `manager`, `role`, the visible `players`, `tasks` (manager and spectators) or `order` with its arrow `target` (workers), `delivered`, `expired`, `ev` |
-| API | `game_end` | back to the square |
-| API | `error` | `code`: `not_host`, `player_count` or `already_playing` |
 
 ## API
 

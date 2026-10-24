@@ -13,7 +13,6 @@ import (
 
 	"github.com/moixblau/HappyX.Api/internal/config"
 	"github.com/moixblau/HappyX.Api/internal/discord"
-	"github.com/moixblau/HappyX.Api/internal/plaza"
 	"github.com/moixblau/HappyX.Api/internal/repository/postgres"
 	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
 	"github.com/moixblau/HappyX.Api/internal/usecase"
@@ -48,13 +47,11 @@ func run(log *slog.Logger) error {
 		time.Now,
 	)
 	api := httpapi.NewServer(svc, cfg.ServiceKeyHashes, log)
-	squares := plaza.NewHub()
 	if w := cfg.Web; w != nil {
 		api.WithWeb(httpapi.Web{
 			Identity:   discord.NewOAuth(w.DiscordClientID, w.DiscordClientSecret, w.RedirectURL()),
 			SessionKey: w.SessionSecret,
 			PublicURL:  w.PublicURL,
-			Plaza:      squares,
 		})
 		log.Info("web dashboard login enabled", "redirect_url", w.RedirectURL())
 	}
@@ -65,8 +62,6 @@ func run(log *slog.Logger) error {
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
 	}
-	// Shutdown doesn't wait for WebSockets; closing the squares lets the tabs reconnect.
-	srv.RegisterOnShutdown(squares.Close)
 
 	errc := make(chan error, 1)
 	go func() {

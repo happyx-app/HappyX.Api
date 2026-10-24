@@ -314,8 +314,3 @@ func (s *Service) activeMember(ctx context.Context, guildID, userID string) erro
 	}
 	return err
 }
-
-// PlazaGuild is the server whose square the viewer may enter: the same members as the games.
-func (s *Service) PlazaGuild(ctx context.Context, v domain.Viewer, guildID string) (domain.Guild, error) {
-	return s.playerGuild(ctx, v, guildID)
-}
