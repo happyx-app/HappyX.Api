@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ func (s *Service) gameGuild(ctx context.Context, guildID string) (domain.Guild, 
 	return g, nil
 }
 
-// StartGameRound opens the guild's round for week with the question the bot picked, in the
+// StartGameRound opens the guild's round for week. If members proposed questions for that week,
+// one of them is drawn at random; otherwise the round takes the question the bot picked, in the
 // guild's language. Starting a round that exists returns it unchanged, so the bot can retry.
 // A round can only start while its answering days are still ahead.
 func (s *Service) StartGameRound(ctx context.Context, guildID string, week time.Time, question string) (domain.GameRound, error) {
@@ -39,7 +41,48 @@ func (s *Service) StartGameRound(ctx context.Context, guildID string, week time.
 	if r.Week.After(today) || r.Phase(today) != domain.GameAnswering {
 		return domain.GameRound{}, domain.ErrClosed
 	}
+	if existing, err := s.games.GetRound(ctx, guildID, r.Week); err != domain.ErrNotFound {
+		return existing, err
+	}
+	proposals, err := s.games.ListProposals(ctx, guildID, r.Week)
+	if err != nil {
+		return domain.GameRound{}, err
+	}
+	if len(proposals) > 0 {
+		p := proposals[rand.IntN(len(proposals))]
+		r.Question, r.ProposerDiscordID = p.Text, p.MemberDiscordID
+	}
 	return s.games.CreateRound(ctx, r)
+}
+
+type ProposeQuestionInput struct {
+	GuildID string
+	UserID  string
+	Text    string
+}
+
+// ProposeQuestion stores a member's question for next Monday's draw, replacing the one they
+// proposed before. Proposals are taken Thursday to Sunday, while this week's round is guessed.
+func (s *Service) ProposeQuestion(ctx context.Context, in ProposeQuestionInput) (domain.GameProposal, error) {
+	g, err := s.gameGuild(ctx, in.GuildID)
+	if err != nil {
+		return domain.GameProposal{}, err
+	}
+	if err := s.activeMember(ctx, in.GuildID, in.UserID); err != nil {
+		return domain.GameProposal{}, err
+	}
+	today := s.today(g)
+	if !domain.ProposalsOpen(today) {
+		return domain.GameProposal{}, domain.ErrClosed
+	}
+	p := domain.GameProposal{
+		GuildDiscordID: in.GuildID, Week: domain.WeekStart(today).AddDate(0, 0, 7),
+		MemberDiscordID: in.UserID, Text: strings.TrimSpace(in.Text),
+	}
+	if err := p.Validate(); err != nil {
+		return domain.GameProposal{}, err
+	}
+	return s.games.UpsertProposal(ctx, p)
 }
 
 // GameRoundStatus is what the bot needs to know about a round.
@@ -142,6 +185,17 @@ type GameRoundView struct {
 	// Finished rounds only: how many guessed each answer right, and the ranking.
 	Right   map[string]int
 	Ranking []domain.GameScore
+	// MyQuestion is set when the viewer proposed the round's question. Who proposed it is
+	// only in Round once the round is finished.
+	MyQuestion bool
+}
+
+// GameProposalBox is the viewer's say in next week's question.
+type GameProposalBox struct {
+	Open  bool      // Thursday to Sunday
+	Week  time.Time // the Monday it is for
+	Mine  string    // the viewer's proposal, if any
+	Count int       // how many members proposed one, the viewer included
 }
 
 // GameBoard is the game page for one guild: this week's round and last week's results.
@@ -149,6 +203,7 @@ type GameBoard struct {
 	Guild    domain.Guild
 	Current  *GameRoundView
 	Previous *GameRoundView
+	Proposal GameProposalBox
 }
 
 // GameBoard shows the game to one of the guild's members. Guilds without games, or where the
@@ -166,6 +221,17 @@ func (s *Service) GameBoard(ctx context.Context, v domain.Viewer, guildID string
 	}
 	if b.Previous, err = s.roundView(ctx, v, g, week.AddDate(0, 0, -7), today); err != nil {
 		return GameBoard{}, err
+	}
+	b.Proposal.Open, b.Proposal.Week = domain.ProposalsOpen(today), week.AddDate(0, 0, 7)
+	proposals, err := s.games.ListProposals(ctx, g.DiscordID, b.Proposal.Week)
+	if err != nil {
+		return GameBoard{}, err
+	}
+	b.Proposal.Count = len(proposals)
+	for _, p := range proposals {
+		if p.MemberDiscordID == v.DiscordID {
+			b.Proposal.Mine = p.Text
+		}
 	}
 	return b, nil
 }
@@ -186,6 +252,10 @@ func (s *Service) roundView(ctx context.Context, v domain.Viewer, g domain.Guild
 	rv := &GameRoundView{
 		Round: r, Phase: r.Phase(today), Count: len(answers), Enough: len(answers) >= domain.MinGameAnswers,
 		Answers: []domain.GameAnswer{}, MyGuesses: map[string]string{},
+		MyQuestion: r.ProposerDiscordID != "" && r.ProposerDiscordID == v.DiscordID,
+	}
+	if rv.Phase != domain.GameFinished {
+		rv.Round.ProposerDiscordID, rv.Round.ProposerUsername = "", ""
 	}
 	for _, a := range answers {
 		if a.MemberDiscordID == v.DiscordID {
@@ -313,9 +383,4 @@ func (s *Service) activeMember(ctx context.Context, guildID, userID string) erro
 		return domain.ErrNotAMember
 	}
 	return err
-}
-
-// PlazaGuild is the server whose square the viewer may enter: the same members as the games.
-func (s *Service) PlazaGuild(ctx context.Context, v domain.Viewer, guildID string) (domain.Guild, error) {
-	return s.playerGuild(ctx, v, guildID)
 }

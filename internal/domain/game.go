@@ -15,6 +15,7 @@ import (
 const (
 	MaxGameQuestionLength = 300
 	MaxGameAnswerLength   = 200
+	MaxGameProposalLength = 200
 	// MinGameAnswers is how many answers a round needs for guessing to make sense.
 	MinGameAnswers = 3
 	// gameAnswerDays is how long members have to answer, from Monday.
@@ -34,7 +35,12 @@ type GameRound struct {
 	GuildDiscordID string
 	Week           time.Time // the Monday the round starts, date only
 	Question       string
-	CreatedAt      time.Time
+	// Proposer is who proposed the question, when it was drawn from the members' proposals
+	// rather than the bot's list. Empty if they left the guild since.
+	ProposerDiscordID string
+	ProposerUsername  string
+	Proposed          bool
+	CreatedAt         time.Time
 }
 
 func (r GameRound) Validate() error {
@@ -68,6 +74,12 @@ func (r GameRound) Phase(today time.Time) GamePhase {
 	}
 }
 
+// ProposalsOpen reports whether members can propose next week's question on today: while this
+// week's round is being guessed, Thursday to Sunday.
+func ProposalsOpen(today time.Time) bool {
+	return !TruncateDay(today).Before(WeekStart(today).AddDate(0, 0, gameAnswerDays))
+}
+
 // WeekStart is the Monday of day's week.
 func WeekStart(day time.Time) time.Time {
 	day = TruncateDay(day)
@@ -93,6 +105,26 @@ func (a GameAnswer) Validate() error {
 	}
 	if strings.TrimSpace(a.Text) == "" || utf8.RuneCountInString(a.Text) > MaxGameAnswerLength {
 		return invalid("answer must be 1-%d characters", MaxGameAnswerLength)
+	}
+	return nil
+}
+
+// GameProposal is a question a member proposes for a later week's round. On that Monday one of
+// the week's proposals is drawn at random; the others are dropped.
+type GameProposal struct {
+	GuildDiscordID  string
+	Week            time.Time // the Monday of the round it is for
+	MemberDiscordID string
+	Username        string
+	Text            string
+}
+
+func (p GameProposal) Validate() error {
+	if err := validateSnowflake("discord_user_id", p.MemberDiscordID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(p.Text) == "" || utf8.RuneCountInString(p.Text) > MaxGameProposalLength {
+		return invalid("question must be 1-%d characters", MaxGameProposalLength)
 	}
 	return nil
 }

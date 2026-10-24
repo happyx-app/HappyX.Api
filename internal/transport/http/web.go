@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/moixblau/HappyX.Api/internal/domain"
-	"github.com/moixblau/HappyX.Api/internal/plaza"
 	"github.com/moixblau/HappyX.Api/internal/usecase"
 )
 
@@ -32,8 +31,6 @@ type Web struct {
 	PublicURL  string
 	SessionTTL time.Duration
 	Now        func() time.Time
-	// Plaza holds the servers' squares; WithWeb makes one when it is nil.
-	Plaza *plaza.Hub
 }
 
 const (
@@ -48,9 +45,6 @@ func (s *Server) WithWeb(w Web) *Server {
 	}
 	if w.Now == nil {
 		w.Now = time.Now
-	}
-	if w.Plaza == nil {
-		w.Plaza = plaza.NewHub()
 	}
 	w.PublicURL = strings.TrimRight(w.PublicURL, "/")
 	s.web = &w
@@ -68,7 +62,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/guilds/{guildID}/game", s.requireViewer(s.webGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/answer", s.requireViewer(s.webAnswerGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/guesses", s.requireViewer(s.webGuessGame))
-	mux.Handle("GET /web/guilds/{guildID}/plaza", s.requireViewer(s.webPlaza))
+	mux.Handle("PUT /web/guilds/{guildID}/game/proposal", s.requireViewer(s.webProposeQuestion))
 }
 
 func (s *Server) secureCookies() bool { return strings.HasPrefix(s.web.PublicURL, "https://") }

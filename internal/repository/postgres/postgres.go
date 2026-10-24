@@ -388,9 +388,10 @@ func NewGameRepo(db *pgxpool.Pool) *GameRepo { return &GameRepo{db: db} }
 
 func (r *GameRepo) CreateRound(ctx context.Context, rd domain.GameRound) (domain.GameRound, error) {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO game_rounds (guild_id, week, question)
-		SELECT id, $2, $3 FROM guilds WHERE discord_id = $1
-		ON CONFLICT (guild_id, week) DO NOTHING`, rd.GuildDiscordID, rd.Week, rd.Question)
+		INSERT INTO game_rounds (guild_id, week, question, proposer_member_id)
+		SELECT g.id, $2, $3, (SELECT m.id FROM members m WHERE m.guild_id = g.id AND m.discord_id = NULLIF($4, ''))
+		FROM guilds g WHERE g.discord_id = $1
+		ON CONFLICT (guild_id, week) DO NOTHING`, rd.GuildDiscordID, rd.Week, rd.Question, rd.ProposerDiscordID)
 	if err != nil {
 		return domain.GameRound{}, err
 	}
@@ -400,10 +401,12 @@ func (r *GameRepo) CreateRound(ctx context.Context, rd domain.GameRound) (domain
 func (r *GameRepo) GetRound(ctx context.Context, guildID string, week time.Time) (domain.GameRound, error) {
 	var rd domain.GameRound
 	err := r.db.QueryRow(ctx, `
-		SELECT g.discord_id, rd.week, rd.question, rd.created_at
+		SELECT g.discord_id, rd.week, rd.question, COALESCE(m.discord_id, ''), COALESCE(m.username, ''),
+		       rd.proposer_member_id IS NOT NULL, rd.created_at
 		FROM game_rounds rd JOIN guilds g ON g.id = rd.guild_id
+		LEFT JOIN members m ON m.id = rd.proposer_member_id
 		WHERE g.discord_id = $1 AND rd.week = $2`, guildID, week).
-		Scan(&rd.GuildDiscordID, &rd.Week, &rd.Question, &rd.CreatedAt)
+		Scan(&rd.GuildDiscordID, &rd.Week, &rd.Question, &rd.ProposerDiscordID, &rd.ProposerUsername, &rd.Proposed, &rd.CreatedAt)
 	rd.Week = domain.TruncateDay(rd.Week)
 	return rd, notFound(err)
 }
@@ -525,6 +528,54 @@ func (r *GameRepo) ListGuesses(ctx context.Context, guildID string, week time.Ti
 			return nil, err
 		}
 		out = append(out, gs)
+	}
+	return out, rows.Err()
+}
+
+const gameProposalCols = `g.discord_id, p.week, m.discord_id, m.username, p.question`
+
+func scanGameProposal(row pgx.Row) (domain.GameProposal, error) {
+	var p domain.GameProposal
+	err := row.Scan(&p.GuildDiscordID, &p.Week, &p.MemberDiscordID, &p.Username, &p.Text)
+	p.Week = domain.TruncateDay(p.Week)
+	return p, notFound(err)
+}
+
+func (r *GameRepo) UpsertProposal(ctx context.Context, p domain.GameProposal) (domain.GameProposal, error) {
+	return scanGameProposal(r.db.QueryRow(ctx, `
+		WITH p AS (
+		         INSERT INTO game_proposals (guild_id, week, member_id, question)
+		         SELECT g.id, $2, m.id, $4
+		         FROM guilds g JOIN members m ON m.guild_id = g.id AND m.discord_id = $3
+		         WHERE g.discord_id = $1
+		         ON CONFLICT (guild_id, week, member_id) DO UPDATE
+		         SET question = EXCLUDED.question, updated_at = now()
+		         RETURNING *
+		     )
+		SELECT `+gameProposalCols+`
+		FROM p JOIN guilds g ON g.id = p.guild_id JOIN members m ON m.id = p.member_id`,
+		p.GuildDiscordID, p.Week, p.MemberDiscordID, p.Text))
+}
+
+func (r *GameRepo) ListProposals(ctx context.Context, guildID string, week time.Time) ([]domain.GameProposal, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT `+gameProposalCols+`
+		FROM game_proposals p
+		JOIN guilds g ON g.id = p.guild_id
+		JOIN members m ON m.id = p.member_id AND m.guild_id = g.id
+		WHERE g.discord_id = $1 AND p.week = $2 AND m.active
+		ORDER BY p.id`, guildID, week)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.GameProposal
+	for rows.Next() {
+		p, err := scanGameProposal(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

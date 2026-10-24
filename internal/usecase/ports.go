@@ -63,6 +63,7 @@ type KudosRepository interface {
 
 type GameRepository interface {
 	// CreateRound stores the guild's round for r.Week, or returns the existing one unchanged.
+	// r.ProposerDiscordID, when set, names the member whose proposal it is.
 	CreateRound(ctx context.Context, r domain.GameRound) (domain.GameRound, error)
 	GetRound(ctx context.Context, guildID string, week time.Time) (domain.GameRound, error)
 	// UpsertAnswer stores the member's answer to the round, replacing an earlier one.
@@ -74,6 +75,10 @@ type GameRepository interface {
 	ReplaceGuesses(ctx context.Context, guildID string, week time.Time, guesserID string, guesses []domain.GameGuess) error
 	// ListGuesses returns the round's guesses by members still taking part.
 	ListGuesses(ctx context.Context, guildID string, week time.Time) ([]domain.GameGuess, error)
+	// UpsertProposal stores the member's question for p.Week, replacing an earlier one.
+	UpsertProposal(ctx context.Context, p domain.GameProposal) (domain.GameProposal, error)
+	// ListProposals returns the questions proposed for week by members still taking part.
+	ListProposals(ctx context.Context, guildID string, week time.Time) ([]domain.GameProposal, error)
 }
 
 // Clock lets tests control "today".
