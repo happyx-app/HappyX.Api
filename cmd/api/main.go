@@ -44,6 +44,7 @@ func run(log *slog.Logger) error {
 		postgres.NewGuildRepo(pool),
 		postgres.NewMemberRepo(pool),
 		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool), postgres.NewGameRepo(pool),
+		postgres.NewPrivacyRepo(pool),
 		time.Now,
 	)
 	api := httpapi.NewServer(svc, cfg.ServiceKeyHashes, log)

@@ -113,11 +113,22 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
 | PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `language`, `games_enabled`, `working_days`. Same rules as the `/v1` PATCH, but who gets the reports can only change from the bot. Needs `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, dispatches); the bot then leaves it. Same visibility rule as settings. Needs `Content-Type: application/json`. 204 |
+| GET | `/web/guilds/{guildID}/export` | downloads the server's data as JSON (`happyx-server-data`): settings, members, survey answers, kudos and «Who's who?» rounds. Same visibility rule as settings, and the same anonymity as the dashboard (see below) |
+| GET | `/web/me/data` | downloads everything HappyX keeps about the logged-in user as JSON (`happyx-personal-data`): per server their membership, answers, kudos given and received, game answers, guesses and proposals, and which servers' reports they receive |
+| DELETE | `/web/me/data` | `confirm_name` (the user's username): erases the user's answers, kudos (given and received) and game activity in every server, and pauses the survey for them everywhere. Their member rows stay, without a username, so the bot doesn't sign them up again. Needs `Content-Type: application/json`. 204 |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
 the server: they are the author, so anonymity doesn't hide anything from them. The streak counts
 consecutive days answered up to today in the server's timezone; not having answered yet today
 doesn't break it.
+
+
+Personal data (GDPR): every logged-in user can download (`/web/me/data`) and erase
+(`DELETE /web/me/data`) their own data. A server export never tells its managers more than the
+dashboard does: a survey answer names its author only if the server is not anonymous now, the
+answer was given while it wasn't either, and the author still takes part; anonymous answers are
+sorted by content within each day. Game answers appear once guessing starts and their authors once
+the round is finished. Nightly database backups still hold erased data until they rotate.
 
 `/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.
 
