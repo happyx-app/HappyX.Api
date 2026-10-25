@@ -217,16 +217,17 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		return
 	}
 	var in struct {
-		Anonymous       *bool           `json:"anonymous"`
-		Timezone        *string         `json:"timezone"`
-		Language        *string         `json:"language"`
-		SurveyHour      *int            `json:"survey_hour"`
-		ReportFrequency *string         `json:"report_frequency"`
-		ReportDM        *bool           `json:"report_dm"`
-		GamesEnabled    *bool           `json:"games_enabled"`
-		WorkingDays     *[]int          `json:"working_days"`
-		SurveyMessage   *string         `json:"survey_message"` // "" goes back to the default text
-		SurveyRoles     *surveyRolesDTO `json:"survey_roles"`
+		Anonymous       *bool          `json:"anonymous"`
+		Timezone        *string        `json:"timezone"`
+		Language        *string        `json:"language"`
+		SurveyHour      *int           `json:"survey_hour"`
+		ReportFrequency *string        `json:"report_frequency"`
+		ReportDM        *bool          `json:"report_dm"`
+		GamesEnabled    *bool          `json:"games_enabled"`
+		WorkingDays     *[]int         `json:"working_days"`
+		SurveyMessage   *string        `json:"survey_message"` // "" goes back to the default text
+		SurveyRoles     *roleFilterDTO `json:"survey_roles"`
+		GameRoles       *roleFilterDTO `json:"game_roles"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -234,7 +235,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		GamesEnabled: in.GamesEnabled, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
-		SurveyRoles: in.SurveyRoles.patch(),
+		SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(),
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)

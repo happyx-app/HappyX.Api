@@ -76,18 +76,19 @@ func NewGuildRepo(db *pgxpool.Pool) *GuildRepo { return &GuildRepo{db: db} }
 
 const guildCols = `discord_id, name, admin_discord_id, anonymous, timezone, survey_hour,
 	report_frequency, report_dm, language, kudos_channel_id, games_enabled, working_days, survey_message,
-	survey_roles_mode, survey_role_ids, active, created_at, updated_at`
+	survey_roles_mode, survey_role_ids, game_roles_mode, game_role_ids, active, created_at, updated_at`
 
 func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var g domain.Guild
 	var freq string
 	var workingDays int16
-	var surveyMode string
+	var surveyMode, gameMode string
 	err := row.Scan(&g.DiscordID, &g.Name, &g.AdminDiscordID, &g.Settings.Anonymous,
 		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.ReportDM, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &workingDays, &g.Settings.SurveyMessage,
-		&surveyMode, &g.Settings.SurveyRoles.RoleIDs, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+		&surveyMode, &g.Settings.SurveyRoles.RoleIDs, &gameMode, &g.Settings.GameRoles.RoleIDs, &g.Active, &g.CreatedAt, &g.UpdatedAt)
 	g.Settings.ReportFrequency = domain.ReportFrequency(freq)
-	g.Settings.SurveyRoles.Mode = domain.SurveyRolesMode(surveyMode)
+	g.Settings.SurveyRoles.Mode = domain.RoleFilterMode(surveyMode)
+	g.Settings.GameRoles.Mode = domain.RoleFilterMode(gameMode)
 	g.Settings.WorkingDays = domain.Weekdays(workingDays)
 	return g, notFound(err)
 }
@@ -152,22 +153,23 @@ func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s
 		UPDATE guilds SET admin_discord_id = $2, anonymous = $3, timezone = $4, survey_hour = $5,
 		       report_frequency = $6, language = $7, kudos_channel_id = $8, games_enabled = $9,
 		       working_days = $10, survey_message = $11, report_dm = $12,
-		       survey_roles_mode = $13, survey_role_ids = $14, updated_at = now()
+		       survey_roles_mode = $13, survey_role_ids = $14, game_roles_mode = $15, game_role_ids = $16, updated_at = now()
 		WHERE discord_id = $1
 		RETURNING `+guildCols,
 		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID, s.GamesEnabled,
-		int16(s.WorkingDays), s.SurveyMessage, s.ReportDM, surveyMode(s.SurveyRoles), surveyRoleIDs(s.SurveyRoles)))
+		int16(s.WorkingDays), s.SurveyMessage, s.ReportDM, filterMode(s.SurveyRoles), filterRoleIDs(s.SurveyRoles),
+		filterMode(s.GameRoles), filterRoleIDs(s.GameRoles)))
 }
 
-// surveyMode and surveyRoleIDs store settings that never set their survey roles as everyone.
-func surveyMode(r domain.SurveyRoles) string {
+// filterMode and filterRoleIDs store role filters that were never set as everyone.
+func filterMode(r domain.RoleFilter) string {
 	if r.Mode == "" {
-		return string(domain.SurveyEveryone)
+		return string(domain.RolesEveryone)
 	}
 	return string(r.Mode)
 }
 
-func surveyRoleIDs(r domain.SurveyRoles) []string {
+func filterRoleIDs(r domain.RoleFilter) []string {
 	if r.RoleIDs == nil {
 		return []string{}
 	}

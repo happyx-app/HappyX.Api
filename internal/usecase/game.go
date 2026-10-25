@@ -68,7 +68,7 @@ func (s *Service) ProposeQuestion(ctx context.Context, in ProposeQuestionInput) 
 	if err != nil {
 		return domain.GameProposal{}, err
 	}
-	if err := s.activeMember(ctx, in.GuildID, in.UserID); err != nil {
+	if err := s.player(ctx, g, in.UserID); err != nil {
 		return domain.GameProposal{}, err
 	}
 	today := s.today(g)
@@ -117,13 +117,13 @@ type AnswerGameInput struct {
 }
 
 // AnswerGame stores a member's answer while the round takes answers. Members who paused
-// HappyX in the guild can't play.
+// HappyX in the guild, or whose roles the game's roles leave out, can't play.
 func (s *Service) AnswerGame(ctx context.Context, in AnswerGameInput) (domain.GameAnswer, error) {
 	g, err := s.gameGuild(ctx, in.GuildID)
 	if err != nil {
 		return domain.GameAnswer{}, err
 	}
-	if err := s.activeMember(ctx, in.GuildID, in.UserID); err != nil {
+	if err := s.player(ctx, g, in.UserID); err != nil {
 		return domain.GameAnswer{}, err
 	}
 	today := s.today(g)
@@ -156,8 +156,15 @@ func (s *Service) GameGuilds(ctx context.Context, v domain.Viewer) ([]domain.Gui
 	}
 	out := gs[:0]
 	for _, g := range gs {
-		if g.Settings.GamesEnabled {
+		if !g.Settings.GamesEnabled {
+			continue
+		}
+		switch err := s.player(ctx, g, v.DiscordID); err {
+		case nil:
 			out = append(out, g)
+		case domain.ErrNotAMember:
+		default:
+			return nil, err
 		}
 	}
 	return out, nil
@@ -368,7 +375,7 @@ func (s *Service) playerGuild(ctx context.Context, v domain.Viewer, guildID stri
 		}
 		return domain.Guild{}, err
 	}
-	if err := s.activeMember(ctx, guildID, v.DiscordID); err != nil {
+	if err := s.player(ctx, g, v.DiscordID); err != nil {
 		if err == domain.ErrNotAMember {
 			return domain.Guild{}, domain.ErrNotFound
 		}
@@ -377,9 +384,11 @@ func (s *Service) playerGuild(ctx context.Context, v domain.Viewer, guildID stri
 	return g, nil
 }
 
-func (s *Service) activeMember(ctx context.Context, guildID, userID string) error {
-	m, err := s.members.Get(ctx, guildID, userID)
-	if err == domain.ErrNotFound || (err == nil && !m.Active) {
+// player fails with ErrNotAMember unless userID takes part in g's game: they haven't opted out
+// and the game's roles let them in.
+func (s *Service) player(ctx context.Context, g domain.Guild, userID string) error {
+	m, err := s.members.Get(ctx, g.DiscordID, userID)
+	if err == domain.ErrNotFound || (err == nil && (!m.Active || !g.Settings.GameRoles.Includes(m.RoleIDs))) {
 		return domain.ErrNotAMember
 	}
 	return err

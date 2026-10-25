@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
 )
@@ -132,5 +133,80 @@ func TestSurveyRoles(t *testing.T) {
 	if _, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); g["survey_roles"].(map[string]any)["mode"] != "except" ||
 		len(g["survey_roles"].(map[string]any)["role_ids"].([]any)) != 1 {
 		t.Fatalf("after deleting one of two roles: %v", g["survey_roles"])
+	}
+}
+
+// TestGameRoles checks the game's own role list: who is left out gets no game DMs, can't answer
+// and doesn't see the game on the web, while the survey keeps its own list.
+func TestGameRoles(t *testing.T) {
+	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC) // Monday
+	srv := newTestServerClock(t, func() time.Time { return now }, func(s *httpapi.Server) {
+		s.WithWeb(httpapi.Web{Identity: fakeDiscord{}, SessionKey: []byte("0123456789abcdef0123456789abcdef"), PublicURL: "http://happyx.test/"})
+	})
+	const (
+		staff, ext         = "200000000000000031", "200000000000000032"
+		staffRole, extRole = "400000000000000021", "400000000000000022"
+	)
+	for _, s := range []struct{ method, path, body string }{
+		{"POST", "/v1/guilds", `{"discord_guild_id":"` + guildA + `","name":"A","admin_discord_user_id":"` + adminA + `"}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID, `{"username":"mia","role_ids":["` + extRole + `"]}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + staff, `{"username":"sam","role_ids":["` + staffRole + `"]}`},
+		{"PUT", "/v1/guilds/" + guildA + "/members/" + ext, `{"username":"eve","role_ids":["` + extRole + `"]}`},
+	} {
+		if code, body := do(t, srv, s.method, s.path, key, s.body); code != 200 {
+			t.Fatalf("%s %s: %d %v", s.method, s.path, code, body)
+		}
+	}
+	if code, body := do(t, srv, "PUT", "/v1/guilds/"+guildA+"/roles", key,
+		`{"roles":[{"id":"`+staffRole+`","name":"Staff","position":2},{"id":"`+extRole+`","name":"Externals","position":1}]}`); code != 204 {
+		t.Fatalf("sync roles: %d %v", code, body)
+	}
+
+	admin := newWebClient(t)
+	login(t, srv, admin, "adminA")
+	if code, g := patchSettings(t, srv, admin, guildA, "application/json", `{"games_enabled":true,"game_roles":{"mode":"except","role_ids":["`+extRole+`"]}}`); code != 200 ||
+		g["game_roles"].(map[string]any)["mode"] != "except" || g["survey_roles"].(map[string]any)["mode"] != "all" {
+		t.Fatalf("game roles: %d %v", code, g)
+	}
+	if code, _ := patchSettings(t, srv, admin, guildA, "application/json", `{"game_roles":{"mode":"only","role_ids":[]}}`); code != 400 {
+		t.Fatalf("only without roles: %d", code)
+	}
+	if got := memberIDs(t, srv, guildA, "?for=game"); got != staff {
+		t.Fatalf("game players: %s", got)
+	}
+	if got := memberIDs(t, srv, guildA, "?for=survey"); got != strings.Join([]string{memberID, staff, ext}, ",") {
+		t.Fatalf("survey recipients keep their own list: %s", got)
+	}
+	if code, _ := do(t, srv, "GET", "/v1/guilds/"+guildA+"/members?for=other", key, ""); code != 400 {
+		t.Fatalf("unknown for: %d", code)
+	}
+
+	if code, out := do(t, srv, "POST", "/v1/guilds/"+guildA+"/game/rounds", key, `{"week":"2026-10-19","question":"¿Qué querías ser de pequeño?"}`); code != 200 {
+		t.Fatalf("start round: %d %v", code, out)
+	}
+	if code, _ := do(t, srv, "PUT", "/v1/guilds/"+guildA+"/game/rounds/2026-10-19/answers/"+ext, key, `{"answer":"Bombero"}`); code != 403 {
+		t.Fatalf("left-out member answering from Discord: %d", code)
+	}
+	if code, _ := do(t, srv, "PUT", "/v1/guilds/"+guildA+"/game/rounds/2026-10-19/answers/"+staff, key, `{"answer":"Bombero"}`); code != 200 {
+		t.Fatalf("player answering: %d", code)
+	}
+
+	// On the web, the left-out member sees no game and can't reach it.
+	m := newWebClient(t)
+	login(t, srv, m, "member")
+	if _, me := get(t, m, srv.URL+"/web/me"); len(me["games"].([]any)) != 0 {
+		t.Fatalf("left-out member's games: %v", me["games"])
+	}
+	if res, _ := get(t, m, srv.URL+"/web/guilds/"+guildA+"/game"); res.StatusCode != 404 {
+		t.Fatalf("left-out member's game page: %d", res.StatusCode)
+	}
+	if code, _ := send(t, m, "PUT", srv.URL+"/web/guilds/"+guildA+"/game/answer", "application/json", `{"answer":"Bombera"}`); code != 404 {
+		t.Fatalf("left-out member answering on the web: %d", code)
+	}
+
+	// Deleting the excluded role in Discord lets everyone play again.
+	do(t, srv, "PUT", "/v1/guilds/"+guildA+"/roles", key, `{"roles":[{"id":"`+staffRole+`","name":"Staff","position":2}]}`)
+	if _, me := get(t, m, srv.URL+"/web/me"); len(me["games"].([]any)) != 1 {
+		t.Fatalf("games after deleting the role: %v", me["games"])
 	}
 }

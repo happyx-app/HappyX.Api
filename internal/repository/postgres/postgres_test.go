@@ -228,7 +228,7 @@ func TestGuildIsolation(t *testing.T) {
 		}
 	}
 
-	membersB, err := svc.ListMembers(ctx, guildB, false)
+	membersB, err := svc.ListMembers(ctx, guildB, usecase.MembersAll)
 	if err != nil || len(membersB) != 1 {
 		t.Fatalf("guild B should have 1 member, got %v %v", membersB, err)
 	}
@@ -331,14 +331,14 @@ func TestSyncMembers(t *testing.T) {
 	if m.Active || len(m.RoleIDs) != 1 || m.RoleIDs[0] != role {
 		t.Fatalf("sync should set the roles and keep the opt-out: %+v", m)
 	}
-	active, err := svc.ListMembers(ctx, guildA, false)
+	active, err := svc.ListMembers(ctx, guildA, usecase.MembersAll)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(active) != 1 || active[0].DiscordID != user2 || active[0].Username != "new" {
 		t.Fatalf("new members are opted in: %+v", active)
 	}
-	if other, _ := svc.ListMembers(ctx, guildB, false); len(other) != 0 {
+	if other, _ := svc.ListMembers(ctx, guildB, usecase.MembersAll); len(other) != 0 {
 		t.Fatalf("another guild got members: %+v", other)
 	}
 	if err := svc.SyncMembers(ctx, guildA, []domain.Member{{DiscordID: "nope"}}); !errors.Is(err, domain.ErrInvalid) {
