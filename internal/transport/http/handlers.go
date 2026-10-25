@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
-	"github.com/moixblau/HappyX.Api/internal/usecase"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/usecase"
 )
 
 const dateLayout = "2006-01-02"

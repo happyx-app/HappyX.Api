@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
 )
 
 // Data exports for the GDPR: a JSON file the browser downloads. "format" and "version" let other

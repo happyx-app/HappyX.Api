@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
+	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
 )
 
 func send(t *testing.T, c *http.Client, method, u, contentType, body string) (int, map[string]any) {

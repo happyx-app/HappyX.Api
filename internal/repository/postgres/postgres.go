@@ -17,8 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
-	"github.com/moixblau/HappyX.Api/migrations"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/migrations"
 )
 
 // Connect opens a pool and applies pending migrations.

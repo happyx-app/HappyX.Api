@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/moixblau/HappyX.Api/internal/repository/postgres"
-	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
-	"github.com/moixblau/HappyX.Api/internal/usecase"
+	"github.com/happyx-app/HappyX.Api/internal/repository/postgres"
+	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
+	"github.com/happyx-app/HappyX.Api/internal/usecase"
 )
 
 const key = "test-key"

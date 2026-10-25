@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
 )
 
 // --- Access ---
