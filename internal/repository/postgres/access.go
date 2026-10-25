@@ -42,6 +42,17 @@ func (r *AccessRepo) ReplaceRoles(ctx context.Context, guildID string, roles []d
 	if _, err := tx.Exec(ctx, `DELETE FROM access_grants WHERE guild_id = $1 AND kind = 'role' AND NOT target_id = ANY($2)`, gid, ids); err != nil {
 		return err
 	}
+	// The same goes for the survey roles. A list left with none of its roles goes back to
+	// everyone: "only" nobody would silently stop the survey for the whole server.
+	if _, err := tx.Exec(ctx, `
+		UPDATE guilds SET
+		       survey_role_ids = kept,
+		       survey_roles_mode = CASE WHEN cardinality(kept) = 0 THEN 'all' ELSE survey_roles_mode END
+		FROM (SELECT ARRAY(SELECT r FROM unnest(survey_role_ids) WITH ORDINALITY AS t(r, n) WHERE r = ANY($2) ORDER BY n) AS kept
+		      FROM guilds WHERE id = $1) k
+		WHERE id = $1 AND NOT survey_role_ids <@ $2`, gid, ids); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 

@@ -80,6 +80,8 @@ type GuildSettings struct {
 	// SurveyMessage is the admin's own text for the daily survey, with {{placeholders}}. It is
 	// sent as written, in whatever language it was written in. Empty means the default text.
 	SurveyMessage string
+	// SurveyRoles narrows who receives the daily survey by Discord role. Everyone by default.
+	SurveyRoles SurveyRoles
 }
 
 // Weekdays is a set of days of the week, one bit per time.Weekday (bit 0 is Sunday).
@@ -135,6 +137,7 @@ func DefaultGuildSettings() GuildSettings {
 		ReportDM:        true,
 		Language:        "en",
 		WorkingDays:     MondayToFriday,
+		SurveyRoles:     SurveyRoles{Mode: SurveyEveryone},
 	}
 }
 
@@ -152,6 +155,9 @@ func (s GuildSettings) Validate() error {
 		return invalid("working_days must have at least one day")
 	}
 	if err := ValidateSurveyMessage(s.SurveyMessage); err != nil {
+		return err
+	}
+	if err := s.SurveyRoles.Validate(); err != nil {
 		return err
 	}
 	if !s.ReportFrequency.Valid() {

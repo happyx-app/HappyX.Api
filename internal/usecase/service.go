@@ -81,6 +81,8 @@ type SettingsPatch struct {
 	WorkingDays    *domain.Weekdays
 	// SurveyMessage set to "" goes back to the default survey text.
 	SurveyMessage *string
+	// SurveyRoles replaces who receives the survey by role. Its roles must exist in the guild.
+	SurveyRoles *domain.SurveyRoles
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -118,6 +120,18 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.SurveyMessage != nil {
 		st.SurveyMessage = strings.TrimSpace(*p.SurveyMessage)
+	}
+	if p.SurveyRoles != nil {
+		st.SurveyRoles = *p.SurveyRoles
+		if st.SurveyRoles.RoleIDs == nil {
+			st.SurveyRoles.RoleIDs = []string{}
+		}
+		if err := st.SurveyRoles.Validate(); err != nil {
+			return domain.Guild{}, err
+		}
+		if err := s.checkRolesExist(ctx, guildID, st.SurveyRoles.RoleIDs); err != nil {
+			return domain.Guild{}, err
+		}
 	}
 	if p.AdminDiscordID != nil {
 		g.AdminDiscordID = *p.AdminDiscordID
@@ -231,11 +245,24 @@ func (s *Service) LeaveMember(ctx context.Context, guildID, userID string, leftS
 	return s.members.Deactivate(ctx, guildID, userID)
 }
 
-func (s *Service) ListMembers(ctx context.Context, guildID string) ([]domain.Member, error) {
-	if _, err := s.activeGuild(ctx, guildID); err != nil {
+// ListMembers returns the members who haven't opted out. forSurvey leaves out, too, those the
+// guild's survey roles don't send the survey to.
+func (s *Service) ListMembers(ctx context.Context, guildID string, forSurvey bool) ([]domain.Member, error) {
+	g, err := s.activeGuild(ctx, guildID)
+	if err != nil {
 		return nil, err
 	}
-	return s.members.ListActive(ctx, guildID)
+	ms, err := s.members.ListActive(ctx, guildID)
+	if err != nil || !forSurvey {
+		return ms, err
+	}
+	out := ms[:0]
+	for _, m := range ms {
+		if g.Settings.SurveyRoles.Receives(m.RoleIDs) {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 // MemberStreaks returns, for each member who has one, how many days in a row up to today they

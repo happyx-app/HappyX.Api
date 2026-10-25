@@ -156,17 +156,18 @@ func (s *Server) webEraseMyData(w http.ResponseWriter, r *http.Request, v domain
 
 type serverExportDTO struct {
 	exportServerDTO
-	Anonymous       bool      `json:"anonymous"`
-	Timezone        string    `json:"timezone"`
-	Language        string    `json:"language"`
-	SurveyHour      int       `json:"survey_hour"`
-	WorkingDays     []int     `json:"working_days"`
-	ReportFrequency string    `json:"report_frequency"`
-	ReportDM        bool      `json:"report_dm"`
-	GamesEnabled    bool      `json:"games_enabled"`
-	SurveyMessage   string    `json:"survey_message,omitempty"`
-	AdminDiscordID  string    `json:"admin_discord_user_id"`
-	CreatedAt       time.Time `json:"created_at"`
+	Anonymous       bool           `json:"anonymous"`
+	Timezone        string         `json:"timezone"`
+	Language        string         `json:"language"`
+	SurveyHour      int            `json:"survey_hour"`
+	WorkingDays     []int          `json:"working_days"`
+	ReportFrequency string         `json:"report_frequency"`
+	ReportDM        bool           `json:"report_dm"`
+	GamesEnabled    bool           `json:"games_enabled"`
+	SurveyMessage   string         `json:"survey_message,omitempty"`
+	SurveyRoles     surveyRolesDTO `json:"survey_roles"`
+	AdminDiscordID  string         `json:"admin_discord_user_id"`
+	CreatedAt       time.Time      `json:"created_at"`
 }
 
 type exportMemberDTO struct {
@@ -220,7 +221,7 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 			Anonymous:       g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 			SurveyHour: g.Settings.SurveyHour, WorkingDays: g.Settings.WorkingDays.ISO(),
 			ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM, GamesEnabled: g.Settings.GamesEnabled,
-			SurveyMessage: g.Settings.SurveyMessage, AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
+			SurveyMessage: g.Settings.SurveyMessage, SurveyRoles: toSurveyRolesDTO(g.Settings.SurveyRoles), AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
 		},
 		Members: []exportMemberDTO{}, Moods: []exportMoodDTO{}, Kudos: toExportKudos(x.Kudos, true, true), Games: []exportRoundDTO{},
 	}
