@@ -14,34 +14,36 @@ const dateLayout = "2006-01-02"
 // --- DTOs ---
 
 type guildDTO struct {
-	DiscordID       string         `json:"discord_guild_id"`
-	Name            string         `json:"name"`
-	AdminDiscordID  string         `json:"admin_discord_user_id"`
-	Anonymous       bool           `json:"anonymous"`
-	Timezone        string         `json:"timezone"`
-	Language        string         `json:"language"`
-	SurveyHour      int            `json:"survey_hour"`
-	ReportFrequency string         `json:"report_frequency"`
-	ReportDM        bool           `json:"report_dm"`
-	KudosChannelID  string         `json:"kudos_channel_id"`
-	GamesEnabled    bool           `json:"games_enabled"`
-	WorkingDays     []int          `json:"working_days"`   // ISO days, 1 is Monday and 7 Sunday
-	SurveyMessage   string         `json:"survey_message"` // "" means the default text
-	SurveyRoles     surveyRolesDTO `json:"survey_roles"`
-	Active          bool           `json:"active"`
-	CreatedAt       time.Time      `json:"created_at"`
+	DiscordID       string        `json:"discord_guild_id"`
+	Name            string        `json:"name"`
+	AdminDiscordID  string        `json:"admin_discord_user_id"`
+	Anonymous       bool          `json:"anonymous"`
+	Timezone        string        `json:"timezone"`
+	Language        string        `json:"language"`
+	SurveyHour      int           `json:"survey_hour"`
+	ReportFrequency string        `json:"report_frequency"`
+	ReportDM        bool          `json:"report_dm"`
+	KudosChannelID  string        `json:"kudos_channel_id"`
+	GamesEnabled    bool          `json:"games_enabled"`
+	WorkingDays     []int         `json:"working_days"`   // ISO days, 1 is Monday and 7 Sunday
+	SurveyMessage   string        `json:"survey_message"` // "" means the default text
+	SurveyRoles     roleFilterDTO `json:"survey_roles"`
+	GameRoles       roleFilterDTO `json:"game_roles"`
+	Active          bool          `json:"active"`
+	CreatedAt       time.Time     `json:"created_at"`
 }
 
-// surveyRolesDTO is who receives the daily survey by role: mode "all", "except" or "only".
-type surveyRolesDTO struct {
+// roleFilterDTO narrows by role who receives the survey or plays the game: mode "all",
+// "except" or "only".
+type roleFilterDTO struct {
 	Mode    string   `json:"mode"`
 	RoleIDs []string `json:"role_ids"`
 }
 
-func toSurveyRolesDTO(r domain.SurveyRoles) surveyRolesDTO {
-	out := surveyRolesDTO{Mode: string(r.Mode), RoleIDs: r.RoleIDs}
+func toRoleFilterDTO(r domain.RoleFilter) roleFilterDTO {
+	out := roleFilterDTO{Mode: string(r.Mode), RoleIDs: r.RoleIDs}
 	if out.Mode == "" {
-		out.Mode = string(domain.SurveyEveryone)
+		out.Mode = string(domain.RolesEveryone)
 	}
 	if out.RoleIDs == nil {
 		out.RoleIDs = []string{}
@@ -49,11 +51,11 @@ func toSurveyRolesDTO(r domain.SurveyRoles) surveyRolesDTO {
 	return out
 }
 
-func (d *surveyRolesDTO) patch() *domain.SurveyRoles {
+func (d *roleFilterDTO) patch() *domain.RoleFilter {
 	if d == nil {
 		return nil
 	}
-	return &domain.SurveyRoles{Mode: domain.SurveyRolesMode(d.Mode), RoleIDs: d.RoleIDs}
+	return &domain.RoleFilter{Mode: domain.RoleFilterMode(d.Mode), RoleIDs: d.RoleIDs}
 }
 
 func toGuildDTO(g domain.Guild) guildDTO {
@@ -63,7 +65,7 @@ func toGuildDTO(g domain.Guild) guildDTO {
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM,
 		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled,
 		WorkingDays: g.Settings.WorkingDays.ISO(), SurveyMessage: g.Settings.SurveyMessage,
-		SurveyRoles: toSurveyRolesDTO(g.Settings.SurveyRoles), Active: g.Active, CreatedAt: g.CreatedAt,
+		SurveyRoles: toRoleFilterDTO(g.Settings.SurveyRoles), GameRoles: toRoleFilterDTO(g.Settings.GameRoles), Active: g.Active, CreatedAt: g.CreatedAt,
 	}
 }
 
@@ -186,17 +188,18 @@ func (s *Server) getGuild(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Anonymous       *bool           `json:"anonymous"`
-		Timezone        *string         `json:"timezone"`
-		Language        *string         `json:"language"`
-		SurveyHour      *int            `json:"survey_hour"`
-		ReportFrequency *string         `json:"report_frequency"`
-		ReportDM        *bool           `json:"report_dm"`
-		AdminDiscordID  *string         `json:"admin_discord_user_id"`
-		KudosChannelID  *string         `json:"kudos_channel_id"` // "" clears it
-		GamesEnabled    *bool           `json:"games_enabled"`
-		WorkingDays     *[]int          `json:"working_days"`
-		SurveyRoles     *surveyRolesDTO `json:"survey_roles"`
+		Anonymous       *bool          `json:"anonymous"`
+		Timezone        *string        `json:"timezone"`
+		Language        *string        `json:"language"`
+		SurveyHour      *int           `json:"survey_hour"`
+		ReportFrequency *string        `json:"report_frequency"`
+		ReportDM        *bool          `json:"report_dm"`
+		AdminDiscordID  *string        `json:"admin_discord_user_id"`
+		KudosChannelID  *string        `json:"kudos_channel_id"` // "" clears it
+		GamesEnabled    *bool          `json:"games_enabled"`
+		WorkingDays     *[]int         `json:"working_days"`
+		SurveyRoles     *roleFilterDTO `json:"survey_roles"`
+		GameRoles       *roleFilterDTO `json:"game_roles"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -204,7 +207,7 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		AdminDiscordID: in.AdminDiscordID, KudosChannelID: in.KudosChannelID, GamesEnabled: in.GamesEnabled,
-		ReportDM: in.ReportDM, SurveyRoles: in.SurveyRoles.patch(),
+		ReportDM: in.ReportDM, SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(),
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)
@@ -253,8 +256,13 @@ func (s *Server) doneRemoving(w http.ResponseWriter, r *http.Request) {
 // --- Members ---
 
 func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
-	// ?for=survey leaves out the members the guild's survey roles don't send the survey to.
-	ms, err := s.svc.ListMembers(r.Context(), r.PathValue("guildID"), r.URL.Query().Get("for") == "survey")
+	// ?for=survey (or game) leaves out the members the guild's survey (or game) roles leave out.
+	purpose := usecase.MembersFor(r.URL.Query().Get("for"))
+	if purpose != usecase.MembersAll && purpose != usecase.MembersSurvey && purpose != usecase.MembersGame {
+		writeError(w, http.StatusBadRequest, `for must be "survey" or "game"`)
+		return
+	}
+	ms, err := s.svc.ListMembers(r.Context(), r.PathValue("guildID"), purpose)
 	if err != nil {
 		s.fail(w, r, err)
 		return

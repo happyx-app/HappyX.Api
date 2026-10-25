@@ -81,7 +81,9 @@ type GuildSettings struct {
 	// sent as written, in whatever language it was written in. Empty means the default text.
 	SurveyMessage string
 	// SurveyRoles narrows who receives the daily survey by Discord role. Everyone by default.
-	SurveyRoles SurveyRoles
+	SurveyRoles RoleFilter
+	// GameRoles narrows who plays the «Who's who?» game by Discord role. Everyone by default.
+	GameRoles RoleFilter
 }
 
 // Weekdays is a set of days of the week, one bit per time.Weekday (bit 0 is Sunday).
@@ -137,7 +139,8 @@ func DefaultGuildSettings() GuildSettings {
 		ReportDM:        true,
 		Language:        "en",
 		WorkingDays:     MondayToFriday,
-		SurveyRoles:     SurveyRoles{Mode: SurveyEveryone},
+		SurveyRoles:     RoleFilter{Mode: RolesEveryone},
+		GameRoles:       RoleFilter{Mode: RolesEveryone},
 	}
 }
 
@@ -157,7 +160,10 @@ func (s GuildSettings) Validate() error {
 	if err := ValidateSurveyMessage(s.SurveyMessage); err != nil {
 		return err
 	}
-	if err := s.SurveyRoles.Validate(); err != nil {
+	if err := s.SurveyRoles.Validate("survey_roles"); err != nil {
+		return err
+	}
+	if err := s.GameRoles.Validate("game_roles"); err != nil {
 		return err
 	}
 	if !s.ReportFrequency.Valid() {

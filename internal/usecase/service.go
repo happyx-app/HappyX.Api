@@ -81,8 +81,10 @@ type SettingsPatch struct {
 	WorkingDays    *domain.Weekdays
 	// SurveyMessage set to "" goes back to the default survey text.
 	SurveyMessage *string
-	// SurveyRoles replaces who receives the survey by role. Its roles must exist in the guild.
-	SurveyRoles *domain.SurveyRoles
+	// SurveyRoles and GameRoles replace who receives the survey and who plays the game, by
+	// role. Their roles must exist in the guild.
+	SurveyRoles *domain.RoleFilter
+	GameRoles   *domain.RoleFilter
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -121,15 +123,22 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	if p.SurveyMessage != nil {
 		st.SurveyMessage = strings.TrimSpace(*p.SurveyMessage)
 	}
-	if p.SurveyRoles != nil {
-		st.SurveyRoles = *p.SurveyRoles
-		if st.SurveyRoles.RoleIDs == nil {
-			st.SurveyRoles.RoleIDs = []string{}
+	for _, f := range []struct {
+		field string
+		patch *domain.RoleFilter
+		dst   *domain.RoleFilter
+	}{{"survey_roles", p.SurveyRoles, &st.SurveyRoles}, {"game_roles", p.GameRoles, &st.GameRoles}} {
+		if f.patch == nil {
+			continue
 		}
-		if err := st.SurveyRoles.Validate(); err != nil {
+		*f.dst = *f.patch
+		if f.dst.RoleIDs == nil {
+			f.dst.RoleIDs = []string{}
+		}
+		if err := f.dst.Validate(f.field); err != nil {
 			return domain.Guild{}, err
 		}
-		if err := s.checkRolesExist(ctx, guildID, st.SurveyRoles.RoleIDs); err != nil {
+		if err := s.checkRolesExist(ctx, guildID, f.dst.RoleIDs); err != nil {
 			return domain.Guild{}, err
 		}
 	}
@@ -245,20 +254,33 @@ func (s *Service) LeaveMember(ctx context.Context, guildID, userID string, leftS
 	return s.members.Deactivate(ctx, guildID, userID)
 }
 
-// ListMembers returns the members who haven't opted out. forSurvey leaves out, too, those the
-// guild's survey roles don't send the survey to.
-func (s *Service) ListMembers(ctx context.Context, guildID string, forSurvey bool) ([]domain.Member, error) {
+// MembersFor says what a list of members is for.
+type MembersFor string
+
+const (
+	MembersAll    MembersFor = ""
+	MembersSurvey MembersFor = "survey" // those the guild's survey roles send the survey to
+	MembersGame   MembersFor = "game"   // those the guild's game roles let play
+)
+
+// ListMembers returns the members who haven't opted out, narrowed to the survey's or the game's
+// roles when that is what the list is for.
+func (s *Service) ListMembers(ctx context.Context, guildID string, purpose MembersFor) ([]domain.Member, error) {
 	g, err := s.activeGuild(ctx, guildID)
 	if err != nil {
 		return nil, err
 	}
 	ms, err := s.members.ListActive(ctx, guildID)
-	if err != nil || !forSurvey {
+	if err != nil || purpose == MembersAll {
 		return ms, err
+	}
+	f := g.Settings.SurveyRoles
+	if purpose == MembersGame {
+		f = g.Settings.GameRoles
 	}
 	out := ms[:0]
 	for _, m := range ms {
-		if g.Settings.SurveyRoles.Receives(m.RoleIDs) {
+		if f.Includes(m.RoleIDs) {
 			out = append(out, m)
 		}
 	}
