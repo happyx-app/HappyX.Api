@@ -517,6 +517,31 @@ func (s *Server) claimDispatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"kind": in.Kind, "period": in.Period})
 }
 
+// finishDispatch records how many people a claimed send went to and how many DMs failed.
+func (s *Server) finishDispatch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Recipients *int `json:"recipients"`
+		Failed     int  `json:"failed"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Recipients == nil {
+		writeError(w, http.StatusBadRequest, "recipients is required")
+		return
+	}
+	period, err := time.Parse(dateLayout, r.PathValue("period"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "period must be YYYY-MM-DD")
+		return
+	}
+	if err := s.svc.FinishDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period, *in.Recipients, in.Failed); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // patchWorkingDays turns the ISO day numbers of a settings change into p.WorkingDays, and
 // answers 400 if they are not valid.
 func (s *Server) patchWorkingDays(w http.ResponseWriter, r *http.Request, iso *[]int, p *usecase.SettingsPatch) bool {

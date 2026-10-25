@@ -206,15 +206,32 @@ func (r *GuildRepo) Delete(ctx context.Context, guildID string) error {
 	if _, err := tx.Exec(ctx, `INSERT INTO guild_removals (discord_id) VALUES ($1) ON CONFLICT DO NOTHING`, guildID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO guild_deletions (reason) VALUES ('dashboard')`); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
 func (r *GuildRepo) DeleteLeftBefore(ctx context.Context, before time.Time) ([]string, error) {
-	rows, err := r.db.Query(ctx, `DELETE FROM guilds WHERE NOT active AND left_at < $1 RETURNING discord_id`, before)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, pgx.RowTo[string])
+	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
+	rows, err := tx.Query(ctx, `DELETE FROM guilds WHERE NOT active AND left_at < $1 RETURNING discord_id`, before)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) > 0 {
+		if _, err := tx.Exec(ctx, `INSERT INTO guild_deletions (reason) SELECT 'retention' FROM generate_series(1, $1)`, len(ids)); err != nil {
+			return nil, err
+		}
+	}
+	return ids, tx.Commit(ctx)
 }
 
 func (r *GuildRepo) ListRemovals(ctx context.Context) ([]string, error) {
@@ -764,4 +781,19 @@ func (r *DispatchRepo) Claim(ctx context.Context, guildID string, kind domain.Di
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+func (r *DispatchRepo) Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE dispatches d SET recipients = $4, failed = $5, finished_at = now()
+		FROM guilds g
+		WHERE g.discord_id = $1 AND d.guild_id = g.id AND d.kind = $2 AND d.period = $3`,
+		guildID, string(kind), period, recipients, failed)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }

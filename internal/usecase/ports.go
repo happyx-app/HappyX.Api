@@ -73,6 +73,9 @@ type DispatchRepository interface {
 	// Claim records that kind was sent to the guild for period. It returns false if it
 	// had already been claimed.
 	Claim(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error)
+	// Finish records how many people a claimed dispatch went to and how many DMs failed.
+	// domain.ErrNotFound when it wasn't claimed.
+	Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error
 }
 
 type MoodRepository interface {

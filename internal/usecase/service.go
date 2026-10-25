@@ -410,6 +410,18 @@ func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain
 	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period))
 }
 
+// FinishDispatch records, after a claimed send, how many people it went to and how many of
+// the DMs failed. Only counts are kept; they feed the owner's admin dashboard.
+func (s *Service) FinishDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error {
+	if !kind.Valid() {
+		return domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\" or \"game_guess\""}
+	}
+	if recipients < 0 || failed < 0 || failed > recipients {
+		return domain.ValidationError{Reason: "recipients and failed must be 0 or more, and failed at most recipients"}
+	}
+	return s.dispatches.Finish(ctx, guildID, kind, domain.TruncateDay(period), recipients, failed)
+}
+
 // --- Reports ---
 
 const maxReportDays = 366
