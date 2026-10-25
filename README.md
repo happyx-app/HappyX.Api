@@ -111,7 +111,7 @@ Put the key in the bot's environment and the hash in `API_KEY_HASHES`. Locally u
 
 ## Web dashboard
 
-People log in to [HappyX.Web](https://github.com/moixblau/HappyX.Web) with Discord OAuth2 (scopes
+People log in to [HappyX.Web](https://github.com/happyx-app/HappyX.Web) with Discord OAuth2 (scopes
 `identify` and `guilds`). The dashboard's nginx forwards `/api/web/...` to this API's `/web/...`,
 so the API itself doesn't need to be public. In the Discord application (OAuth2 > Redirects) add
 `<WEB_URL>/api/web/auth/callback`.
@@ -208,4 +208,4 @@ go test -p 1 ./...
 ```
 
 Database tests are skipped when `TEST_DATABASE_URL` is not set. To run the whole stack, use the
-`docker-compose.yml` in [HappyX](https://github.com/moixblau/HappyX).
+`docker-compose.yml` in [HappyX](https://github.com/happyx-app/HappyX).

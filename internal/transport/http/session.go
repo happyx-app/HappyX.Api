@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
 )
 
 // A session is the logged-in viewer, signed with HMAC-SHA256 and kept in an HttpOnly cookie,

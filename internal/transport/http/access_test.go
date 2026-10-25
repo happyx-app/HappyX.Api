@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
+	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
 )
 
 // TestWebAccess checks the main admin can hand out access to users and roles, that each level

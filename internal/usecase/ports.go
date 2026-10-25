@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
 )
 
 // Every repository method that reads or writes tenant data takes the guild's Discord ID,

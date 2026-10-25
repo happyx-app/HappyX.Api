@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
+	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
 )
 
 // download GETs a dashboard export and checks it comes as a JSON file.

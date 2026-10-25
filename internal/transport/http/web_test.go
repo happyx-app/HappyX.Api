@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
-	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
+	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
 )
 
 const (

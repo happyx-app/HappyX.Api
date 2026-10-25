@@ -11,11 +11,11 @@ import (
 	"time"
 	_ "time/tzdata" // timezone validation must not depend on the image having zoneinfo
 
-	"github.com/moixblau/HappyX.Api/internal/config"
-	"github.com/moixblau/HappyX.Api/internal/discord"
-	"github.com/moixblau/HappyX.Api/internal/repository/postgres"
-	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
-	"github.com/moixblau/HappyX.Api/internal/usecase"
+	"github.com/happyx-app/HappyX.Api/internal/config"
+	"github.com/happyx-app/HappyX.Api/internal/discord"
+	"github.com/happyx-app/HappyX.Api/internal/repository/postgres"
+	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
+	"github.com/happyx-app/HappyX.Api/internal/usecase"
 )
 
 func main() {

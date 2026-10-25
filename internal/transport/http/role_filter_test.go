@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	httpapi "github.com/moixblau/HappyX.Api/internal/transport/http"
+	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
 )
 
 // memberIDs lists who GET /v1/guilds/{guildID}/members{query} returns, sorted.

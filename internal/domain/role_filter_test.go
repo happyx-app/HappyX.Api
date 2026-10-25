@@ -3,7 +3,7 @@ package domain_test
 import (
 	"testing"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
 )
 
 func TestRoleFilterIncludes(t *testing.T) {

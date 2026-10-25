@@ -1,4 +1,4 @@
-module github.com/moixblau/HappyX.Api
+module github.com/happyx-app/HappyX.Api
 
 go 1.27.3
 

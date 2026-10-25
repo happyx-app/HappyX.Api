@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
 )
 
 // --- Personal data (GDPR) ---

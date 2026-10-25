@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
 )
 
 // --- «Who's who?» game ---

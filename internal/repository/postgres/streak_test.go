@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/moixblau/HappyX.Api/internal/domain"
-	"github.com/moixblau/HappyX.Api/internal/usecase"
+	"github.com/happyx-app/HappyX.Api/internal/domain"
+	"github.com/happyx-app/HappyX.Api/internal/usecase"
 )
 
 // The database's streak count must match domain.Streak, which the web's "my evolution" uses.
