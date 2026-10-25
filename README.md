@@ -233,3 +233,7 @@ go test -p 1 ./...
 
 Database tests are skipped when `TEST_DATABASE_URL` is not set. To run the whole stack, use the
 `docker-compose.yml` in [HappyX](https://github.com/happyx-app/HappyX).
+
+## License
+
+[MIT](LICENSE).
