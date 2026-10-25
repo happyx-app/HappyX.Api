@@ -221,6 +221,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		Language        *string `json:"language"`
 		SurveyHour      *int    `json:"survey_hour"`
 		ReportFrequency *string `json:"report_frequency"`
+		ReportDM        *bool   `json:"report_dm"`
 		GamesEnabled    *bool   `json:"games_enabled"`
 		WorkingDays     *[]int  `json:"working_days"`
 		SurveyMessage   *string `json:"survey_message"` // "" goes back to the default text
@@ -230,7 +231,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	}
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
-		GamesEnabled: in.GamesEnabled, SurveyMessage: in.SurveyMessage,
+		GamesEnabled: in.GamesEnabled, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)

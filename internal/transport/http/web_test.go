@@ -309,8 +309,15 @@ func TestWebSettings(t *testing.T) {
 	if code, g := patchSettings(t, srv, a, guildA, jsonCT, `{"survey_message":"  `+msg+`\n"}`); code != 200 || g["survey_message"] != msg {
 		t.Fatalf("survey message: %d %v", code, g)
 	}
+	// The report goes by DM until the admin turns it off to see it only on the web.
+	if g["report_dm"] != true {
+		t.Fatalf("report_dm default: %v", g)
+	}
+	if code, g := patchSettings(t, srv, a, guildA, jsonCT, `{"report_dm":false}`); code != 200 || g["report_dm"] != false {
+		t.Fatalf("report dm off: %d %v", code, g)
+	}
 	// The bot sees the change.
-	if code, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 200 || g["language"] != "es" || g["survey_message"] != msg {
+	if code, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 200 || g["language"] != "es" || g["survey_message"] != msg || g["report_dm"] != false {
 		t.Fatalf("bot view after update: %d %v", code, g)
 	}
 	for _, c := range []struct {

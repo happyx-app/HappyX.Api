@@ -64,6 +64,9 @@ type GuildSettings struct {
 	Timezone        string
 	SurveyHour      int // 0-23, local to Timezone
 	ReportFrequency ReportFrequency
+	// ReportDM sends the report to the main admin as a Discord DM. Off means the report is only
+	// seen on the web and with /report. On by default.
+	ReportDM bool
 	// Language is the code of the language the bot speaks in this guild, e.g. "en" or "pt-BR".
 	// The API only checks its shape; the bot decides which languages it supports.
 	Language string
@@ -129,6 +132,7 @@ func DefaultGuildSettings() GuildSettings {
 		Timezone:        "Europe/Madrid",
 		SurveyHour:      13,
 		ReportFrequency: ReportWeekly,
+		ReportDM:        true,
 		Language:        "en",
 		WorkingDays:     MondayToFriday,
 	}
