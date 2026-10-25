@@ -121,6 +121,9 @@ All secrets come from environment variables; nothing is read from files in the r
 | `DISCORD_CLIENT_SECRET` | Discord application OAuth2 secret |
 | `WEB_URL` | Public URL of the dashboard, e.g. `https://happyx.example.com` |
 | `SESSION_SECRET` | At least 32 random characters to sign dashboard sessions (`openssl rand -hex 32`) |
+| `ADMIN_KEY_HASH` | SHA-256 hex digest of the key [HappyX.Admin](https://github.com/happyx-app/HappyX.Admin) sends. Set it to turn on the admin API (see «Admin dashboard»); it must not be one of `API_KEY_HASHES` |
+| `ADMIN_ADDR` | Listen address of the admin API, default `:8081`. Never publish this port |
+| `BACKUP_DIR` | Optional. The database backups folder mounted read-only (e.g. `/backups`), so the admin dashboard can list the latest backups |
 
 Clients (for now, only the Discord bot) send `Authorization: Bearer <key>`. The API stores only
 the hash, so a leaked config does not leak a usable key. Give each client its own key so it can
@@ -191,6 +194,30 @@ the round is finished. Nightly database backups still hold erased data until the
 
 `/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.
 
+## Admin dashboard
+
+[HappyX.Admin](https://github.com/happyx-app/HappyX.Admin) is a dashboard for whoever runs the
+HappyX instance: how many servers use it, how much they answer and whether the service is healthy.
+Its API is on a port of its own (`ADMIN_ADDR`), off unless `ADMIN_KEY_HASH` is set, which only
+the HappyX.Admin container should reach. It takes `Authorization: Bearer <admin key>`; the bot's
+keys and dashboard sessions don't work there, and the admin key works nowhere else.
+
+It sees every server but only as counts: never a mood, a message, a username or any other text
+members wrote. Each server shows its name, its number of members and answers, its response rate
+and its settings. Latency and the bot's last call are kept in memory and start over when the API
+restarts.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/admin/overview` | `guilds` (`with_bot`, `idle`: no answers for 14 days, `left`, `deleted`, `new_7d`, `left_7d`), `people` (`members`, `opted_out`, `active_today`, `active_7d`, `active_30d`, `repeat_7d`: answered 3 or more days), `usage`, `failed_7d` by kind, `days` (the last 30: `answers`, `with_message`, `recipients`, `answered`, `failed`) and `weeks` (the last 12: `recipients`, `answered`, `answers`, `joins`, `leaves`, `guilds`) |
+| GET | `/admin/guilds` | every server: `status` (`active`, `idle` or `left`, with `purge_at`), `members`, `opted_out`, `active_7d`, `last_answer`, `recipients_7d`, `answered_7d`, `failed_7d` |
+| GET | `/admin/guilds/{guildID}` | one server: `guild` as above, `settings` (only whether there is a custom message, never its text), the last 8 `weeks`, `kudos_7d`, `answers_30d`, `with_message_30d`, `last_report`, `game_answers_7d` |
+| GET | `/admin/health` | `bot` (`last_seen`, `online`: called in the last 5 minutes), `api` (`version`, `started_at`, the last 24 `hours` with `requests`, `errors`, `p50_ms`, `p95_ms`), `deliveries` (the last 14 days, `sent` and `failed` by kind), `database` and `backups` |
+| GET | `/admin/settings` | how the servers with the bot are set up: for each setting, `[{value, guilds}]` |
+
+The response rate is `answered / recipients`: answers to the surveys whose recipients the bot
+reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew it.
+
 ## API
 
 | Method | Path | Body | Notes |
@@ -217,6 +244,7 @@ the round is finished. Nightly database backups still hold erased data until the
 | PUT | `/v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}` | `answer` (1-200) | replaces an earlier answer. 403 for paused members, 409 once answering is over |
 | PUT | `/v1/guilds/{guildID}/game/proposals/{userID}` | `question` (1-200) | proposes next week's question, replacing an earlier one; returns its `week`. 403 for paused members, 409 Monday to Wednesday |
 | POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`/`game`/`game_guess`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent. Makes scheduled sends exactly-once across restarts |
+| PUT | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | `recipients`, `failed` (optional, default 0) | after a claimed send: how many people it went to and how many DMs failed (usually DMs closed). 204; 404 if it wasn't claimed. Only counts, for the admin dashboard |
 
 Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, dispatch already claimed, games off or game step closed), 429 (kudos limit).
 

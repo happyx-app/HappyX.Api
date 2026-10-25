@@ -18,6 +18,15 @@ type Config struct {
 	ServiceKeyHashes [][]byte
 	// Web is set when the dashboard login is configured (DISCORD_CLIENT_ID is not empty).
 	Web *Web
+	// Admin is set when the owner's admin dashboard API is on (ADMIN_KEY_HASH is not empty).
+	Admin *Admin
+}
+
+// Admin is the owner's admin dashboard API, on a port of its own that is never published.
+type Admin struct {
+	Addr      string
+	KeyHash   []byte // SHA-256 of the key HappyX.Admin sends
+	BackupDir string // where the database backups are, read-only; empty hides them
 }
 
 type Web struct {
@@ -49,6 +58,21 @@ func Load() (Config, error) {
 	}
 	if len(c.ServiceKeyHashes) == 0 {
 		return c, errors.New("API_KEY_HASHES is required (comma separated SHA-256 hex digests)")
+	}
+	if raw := strings.TrimSpace(os.Getenv("ADMIN_KEY_HASH")); raw != "" {
+		b, err := hex.DecodeString(raw)
+		if err != nil || len(b) != 32 {
+			return c, errors.New("ADMIN_KEY_HASH must be a SHA-256 hex digest")
+		}
+		for _, h := range c.ServiceKeyHashes {
+			if string(h) == string(b) {
+				return c, errors.New("ADMIN_KEY_HASH must not be one of API_KEY_HASHES: give the admin dashboard its own key")
+			}
+		}
+		c.Admin = &Admin{Addr: getenv("ADMIN_ADDR", ":8081"), KeyHash: b, BackupDir: os.Getenv("BACKUP_DIR")}
+		if c.Admin.Addr == c.Addr {
+			return c, errors.New("ADMIN_ADDR must differ from HTTP_ADDR")
+		}
 	}
 	if os.Getenv("DISCORD_CLIENT_ID") != "" {
 		w := &Web{

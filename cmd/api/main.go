@@ -13,10 +13,14 @@ import (
 
 	"github.com/happyx-app/HappyX.Api/internal/config"
 	"github.com/happyx-app/HappyX.Api/internal/discord"
+	"github.com/happyx-app/HappyX.Api/internal/repository/backups"
 	"github.com/happyx-app/HappyX.Api/internal/repository/postgres"
 	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
 	"github.com/happyx-app/HappyX.Api/internal/usecase"
 )
+
+// version is set at build time (-ldflags "-X main.version=1.2.3"); the admin dashboard shows it.
+var version = "dev"
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -64,13 +68,27 @@ func run(log *slog.Logger) error {
 		WriteTimeout:      15 * time.Second,
 	}
 
+	servers := []*http.Server{srv}
+	if a := cfg.Admin; a != nil {
+		admin := usecase.NewAdmin(postgres.NewAdminRepo(pool), backups.Dir{Path: a.BackupDir}, time.Now)
+		servers = append(servers, &http.Server{
+			Addr:              a.Addr,
+			Handler:           httpapi.NewAdminServer(admin, a.KeyHash, api.Metrics(), version, log).Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+		})
+	}
+
 	go deleteLeftGuilds(ctx, svc, log)
 
-	errc := make(chan error, 1)
-	go func() {
-		log.Info("listening", "addr", cfg.Addr)
-		errc <- srv.ListenAndServe()
-	}()
+	errc := make(chan error, len(servers))
+	for _, s := range servers {
+		go func() {
+			log.Info("listening", "addr", s.Addr)
+			errc <- s.ListenAndServe()
+		}()
+	}
 	select {
 	case err := <-errc:
 		if !errors.Is(err, http.ErrServerClosed) {
@@ -80,7 +98,11 @@ func run(log *slog.Logger) error {
 		log.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return srv.Shutdown(shutdownCtx)
+		for _, s := range servers {
+			if err := s.Shutdown(shutdownCtx); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

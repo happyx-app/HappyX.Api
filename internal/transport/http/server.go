@@ -20,11 +20,15 @@ type Server struct {
 	keyHashes [][]byte
 	log       *slog.Logger
 	web       *Web // nil when the dashboard is not configured
+	metrics   *Metrics
 }
 
 func NewServer(svc *usecase.Service, keyHashes [][]byte, log *slog.Logger) *Server {
-	return &Server{svc: svc, keyHashes: keyHashes, log: log}
+	return &Server{svc: svc, keyHashes: keyHashes, log: log, metrics: NewMetrics(time.Now)}
 }
+
+// Metrics is what the admin dashboard shows about this server's requests.
+func (s *Server) Metrics() *Metrics { return s.metrics }
 
 // Handler wires the routes. Every tenant route is under /v1/guilds/{guildID}, where
 // guildID is the Discord guild (server) ID.
@@ -51,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /v1/guilds/{guildID}/roles", s.syncRoles)
 	api.HandleFunc("GET /v1/guilds/{guildID}/report", s.report)
 	api.HandleFunc("POST /v1/guilds/{guildID}/dispatches", s.claimDispatch)
+	api.HandleFunc("PUT /v1/guilds/{guildID}/dispatches/{kind}/{period}", s.finishDispatch)
 	api.HandleFunc("POST /v1/guilds/{guildID}/kudos", s.giveKudos)
 	api.HandleFunc("POST /v1/guilds/{guildID}/game/rounds", s.startGameRound)
 	api.HandleFunc("GET /v1/guilds/{guildID}/game/rounds/{week}", s.gameRound)
@@ -67,18 +72,19 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) requireKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || key == "" || !s.validKey(key) {
+		if !ok || key == "" || !validKey(s.keyHashes, key) {
 			writeError(w, http.StatusUnauthorized, "missing or invalid API key")
 			return
 		}
+		s.metrics.sawBot()
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) validKey(key string) bool {
+func validKey(hashes [][]byte, key string) bool {
 	sum := sha256.Sum256([]byte(key))
 	valid := false
-	for _, h := range s.keyHashes {
+	for _, h := range hashes {
 		if subtle.ConstantTimeCompare(sum[:], h) == 1 {
 			valid = true
 		}
@@ -101,6 +107,9 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
+		if r.URL.Path != "/health" {
+			s.metrics.record(time.Since(start), rec.status)
+		}
 		s.log.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status,
 			"duration", time.Since(start))
 	})
