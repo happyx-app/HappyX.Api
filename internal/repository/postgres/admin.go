@@ -18,6 +18,10 @@ func NewAdminRepo(db *pgxpool.Pool) *AdminRepo { return &AdminRepo{db: db} }
 
 // answeredSQL counts answers to surveys whose recipients the bot reported, so the response rate
 // compares like with like.
+// sentDaySQL is the day a dispatch went out: a survey's or game's period is that day, but a
+// report's period is the start of the week or month it covers.
+const sentDaySQL = `(CASE WHEN kind = 'report' THEN created_at::date ELSE period END)`
+
 const answeredSQL = `JOIN dispatches d ON d.guild_id = e.guild_id AND d.kind = 'survey' AND d.period = e.day AND d.recipients IS NOT NULL`
 
 func (r *AdminRepo) Overview(ctx context.Context, now time.Time) (domain.AdminOverview, error) {
@@ -51,7 +55,7 @@ func (r *AdminRepo) Overview(ctx context.Context, now time.Time) (domain.AdminOv
 		SELECT count(DISTINCT m.discord_id) FILTER (WHERE e.day = $1),
 		       count(DISTINCT m.discord_id) FILTER (WHERE e.day > $1::date - 7),
 		       count(DISTINCT m.discord_id)
-		FROM mood_entries e JOIN members m ON m.id = e.member_id
+		FROM mood_entries e JOIN members m ON m.id = e.member_id JOIN guilds g ON g.id = e.guild_id AND g.active
 		WHERE e.day > $1::date - 30`, today).Scan(&o.People.Today, &o.People.Week, &o.People.Month)
 	if err != nil {
 		return o, err
@@ -59,7 +63,7 @@ func (r *AdminRepo) Overview(ctx context.Context, now time.Time) (domain.AdminOv
 	err = r.db.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE days >= 3) FROM (
 			SELECT m.discord_id, count(DISTINCT e.day) AS days
-			FROM mood_entries e JOIN members m ON m.id = e.member_id
+			FROM mood_entries e JOIN members m ON m.id = e.member_id JOIN guilds g ON g.id = e.guild_id AND g.active
 			WHERE e.day > $1::date - 7 GROUP BY m.discord_id) p`, today).Scan(&o.People.Repeat)
 	if err != nil {
 		return o, err
@@ -80,7 +84,7 @@ func (r *AdminRepo) Overview(ctx context.Context, now time.Time) (domain.AdminOv
 	o.Failed7d = map[domain.DispatchKind]int{}
 	rows, err := r.db.Query(ctx, `
 		SELECT kind, coalesce(sum(failed), 0) FROM dispatches
-		WHERE period > $1::date - 7 GROUP BY kind`, today)
+		WHERE `+sentDaySQL+` > $1::date - 7 GROUP BY kind`, today)
 	if err != nil {
 		return o, err
 	}
@@ -164,7 +168,7 @@ const adminGuildSQL = `
 	       (SELECT max(e.day) FROM mood_entries e WHERE e.guild_id = g.id),
 	       coalesce((SELECT sum(d.recipients) FROM dispatches d WHERE d.guild_id = g.id AND d.kind = 'survey' AND d.period > $1::date - 7), 0),
 	       (SELECT count(*) FROM mood_entries e ` + answeredSQL + ` WHERE e.guild_id = g.id AND e.day > $1::date - 7),
-	       coalesce((SELECT sum(d.failed) FROM dispatches d WHERE d.guild_id = g.id AND d.period > $1::date - 7), 0)
+	       coalesce((SELECT sum(d.failed) FROM dispatches d WHERE d.guild_id = g.id AND ` + sentDaySQL + ` > $1::date - 7), 0)
 	FROM guilds g`
 
 func scanAdminGuild(row pgx.Row, now time.Time) (domain.AdminGuild, error) {
@@ -228,8 +232,8 @@ func (r *AdminRepo) Deliveries(ctx context.Context, now time.Time, n int) ([]dom
 	rows, err := r.db.Query(ctx, `
 		SELECT d::date, coalesce(x.kind, ''), coalesce(x.sent, 0), coalesce(x.failed, 0)
 		FROM generate_series($1::date - ($2::int - 1), $1::date, interval '1 day') d
-		LEFT JOIN (SELECT period, kind, sum(recipients) AS sent, sum(failed) AS failed FROM dispatches
-		           WHERE period > $1::date - $2::int AND recipients IS NOT NULL GROUP BY period, kind) x ON x.period = d::date
+		LEFT JOIN (SELECT `+sentDaySQL+` AS day, kind, sum(recipients) AS sent, sum(failed) AS failed FROM dispatches
+		           WHERE `+sentDaySQL+` > $1::date - $2::int AND recipients IS NOT NULL GROUP BY 1, kind) x ON x.day = d::date
 		ORDER BY 1, 2`, today, n)
 	if err != nil {
 		return nil, err
