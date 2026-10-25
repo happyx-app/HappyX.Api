@@ -1,4 +1,28 @@
+<div align="center">
+
+<a href="https://github.com/happyx-app/HappyX"><img src="https://raw.githubusercontent.com/happyx-app/HappyX/main/docs/images/logo.svg" alt="HappyX logo" width="72" height="72"></a>
+
 # HappyX.Api
+
+The REST API behind **[HappyX](https://github.com/happyx-app/HappyX)**, the Discord bot that asks your team how they
+feel every working day and turns the answers into reports.
+
+[![CI](https://github.com/happyx-app/HappyX.Api/actions/workflows/ci.yml/badge.svg)](https://github.com/happyx-app/HappyX.Api/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square&logo=go&logoColor=white)](go.mod)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?style=flat-square&logo=postgresql&logoColor=white)](migrations)
+[![Image](https://img.shields.io/badge/ghcr.io-happyx--api-8b5cf6?style=flat-square&logo=docker&logoColor=white)](https://github.com/orgs/happyx-app/packages)
+
+[HappyX](https://github.com/happyx-app/HappyX) ·
+**Api** ·
+[Bot](https://github.com/happyx-app/HappyX.Bot) ·
+[Web](https://github.com/happyx-app/HappyX.Web) ·
+[Bruno](https://github.com/happyx-app/HappyX.Bruno)
+
+</div>
+
+> [!TIP]
+> New here? Start with the [main HappyX README](https://github.com/happyx-app/HappyX): what HappyX
+> does, screenshots, the architecture and how to self-host the whole stack.
 
 REST API for HappyX: members of a Discord server answer a daily mood survey (1-5, with an
 optional message) and the server admin receives a weekly or monthly report.
