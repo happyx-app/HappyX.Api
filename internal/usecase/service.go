@@ -73,6 +73,7 @@ type SettingsPatch struct {
 	Language        *string
 	SurveyHour      *int
 	ReportFrequency *domain.ReportFrequency
+	ReportDM        *bool
 	AdminDiscordID  *string
 	// KudosChannelID set to "" goes back to posting where the command is used.
 	KudosChannelID *string
@@ -102,6 +103,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.ReportFrequency != nil {
 		st.ReportFrequency = *p.ReportFrequency
+	}
+	if p.ReportDM != nil {
+		st.ReportDM = *p.ReportDM
 	}
 	if p.KudosChannelID != nil {
 		st.KudosChannelID = *p.KudosChannelID
