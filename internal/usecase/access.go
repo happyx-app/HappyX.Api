@@ -140,3 +140,32 @@ func (s *Service) SetGuildAccess(ctx context.Context, v domain.Viewer, guildID, 
 	g.AdminDiscordID = adminID
 	return s.accessSettings(ctx, g)
 }
+
+// checkRolesExist fails unless every role is one of the guild's, as the bot last saw them.
+func (s *Service) checkRolesExist(ctx context.Context, guildID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	roles, err := s.access.ListRoles(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	has := map[string]bool{}
+	for _, ro := range roles {
+		has[ro.DiscordID] = true
+	}
+	for _, id := range ids {
+		if !has[id] {
+			return domain.ValidationError{Reason: "role " + id + " doesn't exist in the server"}
+		}
+	}
+	return nil
+}
+
+// GuildRoles returns the guild's Discord roles, highest first, for those who change its settings.
+func (s *Service) GuildRoles(ctx context.Context, v domain.Viewer, guildID string) ([]domain.Role, error) {
+	if _, err := s.ViewerGuild(ctx, v, guildID, domain.AccessManage); err != nil {
+		return nil, err
+	}
+	return s.access.ListRoles(ctx, guildID)
+}

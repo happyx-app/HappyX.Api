@@ -45,6 +45,17 @@ Each guild has working days (`working_days`, Monday to Friday by default). The b
 daily survey on those days. Reports leave out non-working days unless someone answered on one, and
 a member's streak isn't broken by them.
 
+### Survey roles
+
+Each guild chooses who receives the daily survey by Discord role (`survey_roles`):
+`{"mode": "all"}` (everyone, the default), `{"mode": "except", "role_ids": [...]}` leaves out
+members with any of the roles (e.g. external collaborators), and `{"mode": "only", "role_ids":
+[...]}` sends it only to members with at least one of them. An excluded role wins over an
+included one, and members who opted out never get it. The roles must exist in the server (1-50
+of them). It is independent from dashboard access: the main admin still gets the reports. When a
+role is deleted in Discord it drops off the list, and a list left empty goes back to everyone.
+The bot asks for the survey's recipients with `GET /v1/guilds/{guildID}/members?for=survey`.
+
 ### Custom survey message
 
 Admins can write their own text for the daily survey (`survey_message`, at most 500 characters).
@@ -128,7 +139,8 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
 | PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `report_dm`, `language`, `games_enabled`, `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `report_dm`, `language`, `games_enabled`, `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| GET | `/web/guilds/{guildID}/roles` | the server's Discord roles (`id`, `name`, `color`, `position`, highest first), for the settings' pickers. Needs **manage** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |
 | PUT | `/web/guilds/{guildID}/access` | `admin_discord_user_id` and the full `grants` list (at most 50). The admin and granted users must be in the server, roles must exist. Needs **owner** and `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, dispatches); the bot then leaves it. Needs **owner** and `Content-Type: application/json`. 204 |
@@ -159,11 +171,11 @@ the round is finished. Nightly database backups still hold erased data until the
 | GET | `/v1/guilds` | | active guilds (for the bot's scheduler) |
 | POST | `/v1/guilds` | `discord_guild_id`, `name`, `admin_discord_user_id` | register on join; idempotent, keeps settings and the admin of a known server |
 | GET | `/v1/guilds/{guildID}` | | |
-| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `report_dm` (send the report to the main admin by DM; default `true`, `false` means web and `/report` only), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`) | |
+| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `report_dm` (send the report to the main admin by DM; default `true`, `false` means web and `/report` only), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`), `survey_roles` (see «Survey roles») | |
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys and hides the server from the dashboard. Data is kept 30 days in case the bot is added back, then deleted |
 | GET | `/v1/removals` | | Discord IDs of the servers deleted from the dashboard that the bot must leave |
 | DELETE | `/v1/removals/{guildID}` | | the bot has left the server. Until then `POST /v1/guilds` for it answers 410 |
-| GET | `/v1/guilds/{guildID}/members` | | active members; `?with=streak` adds each one's `streak` (days in a row answering, omitted when 0) |
+| GET | `/v1/guilds/{guildID}/members` | | active members; `?for=survey` keeps only those the survey roles send the survey to; `?with=streak` adds each one's `streak` (days in a row answering, omitted when 0) |
 | PUT | `/v1/guilds/{guildID}/members` | `members`: up to 1000 `{discord_user_id, username, role_ids}` | bulk sync in one transaction: creates or refreshes each member's name and roles, keeping everyone's opt-in state |
 | PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional), `role_ids` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in; `role_ids` omitted keeps their Discord roles |
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out; `?left=true` when they left the server, which also ends their dashboard access |

@@ -63,6 +63,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
+	mux.Handle("GET /web/guilds/{guildID}/roles", s.requireViewer(s.webRoles))
 	mux.Handle("DELETE /web/guilds/{guildID}", s.requireViewer(s.webDeleteGuild))
 	mux.Handle("GET /web/guilds/{guildID}/access", s.requireViewer(s.webAccess))
 	mux.Handle("PUT /web/guilds/{guildID}/access", s.requireViewer(s.webSetAccess))
@@ -216,15 +217,16 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		return
 	}
 	var in struct {
-		Anonymous       *bool   `json:"anonymous"`
-		Timezone        *string `json:"timezone"`
-		Language        *string `json:"language"`
-		SurveyHour      *int    `json:"survey_hour"`
-		ReportFrequency *string `json:"report_frequency"`
-		ReportDM        *bool   `json:"report_dm"`
-		GamesEnabled    *bool   `json:"games_enabled"`
-		WorkingDays     *[]int  `json:"working_days"`
-		SurveyMessage   *string `json:"survey_message"` // "" goes back to the default text
+		Anonymous       *bool           `json:"anonymous"`
+		Timezone        *string         `json:"timezone"`
+		Language        *string         `json:"language"`
+		SurveyHour      *int            `json:"survey_hour"`
+		ReportFrequency *string         `json:"report_frequency"`
+		ReportDM        *bool           `json:"report_dm"`
+		GamesEnabled    *bool           `json:"games_enabled"`
+		WorkingDays     *[]int          `json:"working_days"`
+		SurveyMessage   *string         `json:"survey_message"` // "" goes back to the default text
+		SurveyRoles     *surveyRolesDTO `json:"survey_roles"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -232,6 +234,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		GamesEnabled: in.GamesEnabled, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
+		SurveyRoles: in.SurveyRoles.patch(),
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)
@@ -247,6 +250,20 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	}
 	s.log.Info("settings changed from the dashboard", "guild", g.DiscordID, "by", v.DiscordID)
 	writeJSON(w, http.StatusOK, toGuildDTO(g))
+}
+
+// webRoles lists the server's Discord roles, highest first, for the settings' role pickers.
+func (s *Server) webRoles(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	roles, err := s.svc.GuildRoles(r.Context(), v, r.PathValue("guildID"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	out := make([]roleDTO, 0, len(roles))
+	for _, ro := range roles {
+		out = append(out, roleDTO{DiscordID: ro.DiscordID, Name: ro.Name, Color: ro.Color, Position: ro.Position})
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // webDeleteGuild deletes a server and all its data from HappyX. The body must name the server
