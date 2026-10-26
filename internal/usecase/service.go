@@ -348,6 +348,27 @@ func (s *Service) RecordMood(ctx context.Context, in RecordMoodInput) (domain.Mo
 	return s.moods.Upsert(ctx, e)
 }
 
+// MoodStreak returns how many days in a row up to today the member has answered in the guild,
+// so the bot can show it right after an answer.
+func (s *Service) MoodStreak(ctx context.Context, guildID, userID string) (int, error) {
+	g, err := s.activeGuild(ctx, guildID)
+	if err != nil {
+		return 0, err
+	}
+	today := s.today(g)
+	entries, err := s.moods.ListForUser(ctx, userID, today.AddDate(0, 0, -streakWindow), today)
+	if err != nil {
+		return 0, err
+	}
+	answered := map[time.Time]bool{}
+	for _, e := range entries {
+		if e.GuildDiscordID == guildID {
+			answered[domain.TruncateDay(e.Day)] = true
+		}
+	}
+	return domain.Streak(g, answered, today), nil
+}
+
 // --- Kudos ---
 
 type GiveKudosInput struct {

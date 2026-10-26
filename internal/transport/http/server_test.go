@@ -105,6 +105,11 @@ func TestMoodFlow(t *testing.T) {
 		}
 	}
 
+	// The reply carries the answering streak, counting this answer.
+	if code, m := do(t, srv, "PUT", "/v1/guilds/"+g+"/members/"+u+"/mood", key, `{"mood":4,"message":"bien"}`); code != 200 || m["streak"] != float64(1) {
+		t.Fatalf("mood reply: %d %v, want streak 1", code, m)
+	}
+
 	code, rep := do(t, srv, "GET", "/v1/guilds/"+g+"/report?from=2026-10-22&to=2026-10-22", key, "")
 	if code != 200 || rep["responses"].(float64) != 1 || rep["average"].(float64) != 4 {
 		t.Fatalf("report: %d %v", code, rep)

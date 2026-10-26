@@ -89,6 +89,9 @@ type moodDTO struct {
 	Day       string `json:"day"`
 	Mood      int    `json:"mood"`
 	Message   string `json:"message,omitempty"`
+	// Streak is how many days in a row up to today they have answered, counting this answer.
+	// Only in the reply to recording a mood; 0 (left out) if it couldn't be counted.
+	Streak int `json:"streak,omitempty"`
 }
 
 type reportDTO struct {
@@ -401,8 +404,14 @@ func (s *Server) recordMood(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	// The answer is saved either way; the streak is only for the bot's thank-you message.
+	streak, err := s.svc.MoodStreak(r.Context(), r.PathValue("guildID"), r.PathValue("userID"))
+	if err != nil {
+		s.log.Warn("count streak", "guild", r.PathValue("guildID"), "err", err)
+	}
 	writeJSON(w, http.StatusOK, moodDTO{
 		DiscordID: e.MemberDiscordID, Day: e.Day.Format(dateLayout), Mood: int(e.Mood), Message: e.Message,
+		Streak: streak,
 	})
 }
 

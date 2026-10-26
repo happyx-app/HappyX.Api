@@ -44,8 +44,13 @@ func TestMemberStreaksMatchDomain(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if n := domain.Streak(g, answered, today); n > 0 {
+		n := domain.Streak(g, answered, today)
+		if n > 0 {
 			want[user] = n
+		}
+		// The streak the bot shows right after an answer counts the same way.
+		if one, err := svc.MoodStreak(ctx, guildA, user); err != nil || one != n {
+			t.Fatalf("MoodStreak(%s) = %d, %v; want %d", user, one, err, n)
 		}
 	}
 	got, err := svc.MemberStreaks(ctx, guildA)

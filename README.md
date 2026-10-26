@@ -236,7 +236,7 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out; `?left=true` when they left the server, which also ends their dashboard access |
 | GET | `/v1/guilds/{guildID}/members/{userID}/access` | | `{level}`: `none`, `view`, `manage` or `owner`, for the bot's admin commands. `?discord_admin=true` when Discord says they own the server or are an Administrator |
 | PUT | `/v1/guilds/{guildID}/roles` | `roles`: `[{id, name, color, position}]` | replaces the server's roles; grants to roles that are gone are dropped. 204 |
-| PUT | `/v1/guilds/{guildID}/members/{userID}/mood` | `mood` (1-5), `message` (optional, ≤500), `day` (optional `YYYY-MM-DD`) | one answer per day; answering again replaces it |
+| PUT | `/v1/guilds/{guildID}/members/{userID}/mood` | `mood` (1-5), `message` (optional, ≤500), `day` (optional `YYYY-MM-DD`) | one answer per day; answering again replaces it. The reply includes `streak`, the days in a row they have answered counting this one |
 | GET | `/v1/guilds/{guildID}/report` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` | without a range: last complete week or month |
 | POST | `/v1/guilds/{guildID}/kudos` | `from_discord_user_id`, `to_discord_user_id`, `message` (1-300) | 201 with the kudos and both usernames. Both must be known members (paused is fine), not the same person; at most 10 per giver per day (429) |
 | POST | `/v1/guilds/{guildID}/game/rounds` | `week` (a Monday, `YYYY-MM-DD`), `question` (1-300) | starts the week's round, Monday to Wednesday, with a proposed question if there are any (`proposed`); idempotent (keeps the first question). 409 when games are off or answering is over |
