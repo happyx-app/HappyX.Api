@@ -64,6 +64,10 @@ type AccessRepository interface {
 	ReplaceRoles(ctx context.Context, guildID string, roles []domain.Role) error
 	// ListRoles returns the guild's roles, highest first as in Discord.
 	ListRoles(ctx context.Context, guildID string) ([]domain.Role, error)
+	// ReplaceChannels sets the guild's channels and clears its kudos channel if it was deleted.
+	ReplaceChannels(ctx context.Context, guildID string, channels []domain.Channel) error
+	// ListChannels returns the guild's channels in Discord's order.
+	ListChannels(ctx context.Context, guildID string) ([]domain.Channel, error)
 	ListGrants(ctx context.Context, guildID string) ([]domain.AccessGrant, error)
 	// SetAccess sets the guild's main admin and replaces its grants in one write.
 	SetAccess(ctx context.Context, guildID, adminID string, grants []domain.AccessGrant) error
