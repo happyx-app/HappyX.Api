@@ -92,6 +92,8 @@ func TestMoodFlow(t *testing.T) {
 		{"PUT", "/v1/guilds/" + g + "/members/" + u, `{"username":"ana"}`, 200},
 		{"PUT", "/v1/guilds/" + g + "/members/" + u + "/mood", `{"mood":4,"message":"bien"}`, 200},
 		{"PUT", "/v1/guilds/" + g + "/members/" + u + "/mood", `{"mood":9}`, 400},
+		{"PUT", "/v1/guilds/" + g + "/members/" + u + "/mood", `{"mood":3,"day":"2026-10-21"}`, 200}, // yesterday is still fine
+		{"PUT", "/v1/guilds/" + g + "/members/" + u + "/mood", `{"mood":1,"day":"2026-10-20"}`, 400}, // an old DM button must not rewrite the past
 		{"PATCH", "/v1/guilds/" + g, `{"survey_hour":25}`, 400},
 		{"PATCH", "/v1/guilds/" + g, `{"language":"pt-BR"}`, 200},
 		{"PATCH", "/v1/guilds/" + g, `{"language":"klingon"}`, 400},
