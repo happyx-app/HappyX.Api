@@ -304,6 +304,9 @@ func (s *Service) MemberStreaks(ctx context.Context, guildID string) (map[string
 
 // --- Moods ---
 
+// maxMoodAgeDays is how many days back a survey can still be answered.
+const maxMoodAgeDays = 1
+
 type RecordMoodInput struct {
 	GuildID string
 	UserID  string
@@ -331,9 +334,13 @@ func (s *Service) RecordMood(ctx context.Context, in RecordMoodInput) (domain.Mo
 		day = today
 	}
 	day = domain.TruncateDay(day)
-	// Late answers to yesterday's survey are fine; the future is not.
+	// Late answers to yesterday's survey are fine; the future and anything older are not, so
+	// an old DM button cannot overwrite a past answer.
 	if day.After(today) {
 		return domain.MoodEntry{}, domain.ValidationError{Reason: "day cannot be in the future"}
+	}
+	if day.Before(today.AddDate(0, 0, -maxMoodAgeDays)) {
+		return domain.MoodEntry{}, domain.ValidationError{Reason: "this survey is too old to answer"}
 	}
 	e := domain.MoodEntry{
 		GuildDiscordID:  in.GuildID,
