@@ -63,8 +63,6 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("GET /web/guilds/{guildID}/health", s.requireViewer(s.webHealth))
-	mux.Handle("GET /web/guilds/{guildID}/pro-interest", s.requireViewer(s.webProInterest))
-	mux.Handle("PUT /web/guilds/{guildID}/pro-interest", s.requireViewer(s.webSetProInterest))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
 	mux.Handle("GET /web/guilds/{guildID}/roles", s.requireViewer(s.webRoles))
 	mux.Handle("DELETE /web/guilds/{guildID}", s.requireViewer(s.webDeleteGuild))
@@ -233,49 +231,6 @@ func (s *Server) webHealth(w http.ResponseWriter, r *http.Request, v domain.View
 		out.LastSurvey = &lastDTO{Day: l.Day.Format(dateLayout), Recipients: l.Recipients, Failed: l.Failed}
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-type proInterestDTO struct {
-	Interested bool   `json:"interested"`
-	Price      string `json:"price"` // "", "0", "5", "9" or "29" (euros a month)
-}
-
-// webProInterest returns the server's answer to the Pro waitlist.
-func (s *Server) webProInterest(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
-	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"), domain.AccessView)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	p, err := s.svc.ProInterest(r.Context(), g)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, proInterestDTO{Interested: p.Interested, Price: p.Price})
-}
-
-// webSetProInterest stores the server's answer to the Pro waitlist. It needs "manage": it
-// speaks for the server.
-func (s *Server) webSetProInterest(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
-	if !requireJSON(w, r) {
-		return
-	}
-	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"), domain.AccessManage)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	var in proInterestDTO
-	if !decode(w, r, &in) {
-		return
-	}
-	p, err := s.svc.SetProInterest(r.Context(), g, domain.ProInterest{Interested: in.Interested, Price: in.Price})
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, proInterestDTO{Interested: p.Interested, Price: p.Price})
 }
 
 // webUpdateSettings changes a server's settings from the dashboard: the same options as the

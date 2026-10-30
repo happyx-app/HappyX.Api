@@ -496,18 +496,6 @@ func (s *Service) GuildHealth(ctx context.Context, g domain.Guild) (domain.Guild
 	return h, nil
 }
 
-// ProInterest is the guild's answer to the Pro waitlist.
-func (s *Service) ProInterest(ctx context.Context, g domain.Guild) (domain.ProInterest, error) {
-	return s.guilds.ProInterest(ctx, g.DiscordID)
-}
-
-func (s *Service) SetProInterest(ctx context.Context, g domain.Guild, p domain.ProInterest) (domain.ProInterest, error) {
-	if err := p.Validate(); err != nil {
-		return domain.ProInterest{}, err
-	}
-	return s.guilds.SetProInterest(ctx, g.DiscordID, p)
-}
-
 // --- Web dashboard ---
 
 // GuildAccess is a guild together with what the viewer may do with it.

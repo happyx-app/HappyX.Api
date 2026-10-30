@@ -40,10 +40,6 @@ type GuildRepository interface {
 	Removing(ctx context.Context, guildID string) (bool, error)
 	// DoneRemoving takes the guild off the removal queue.
 	DoneRemoving(ctx context.Context, guildID string) error
-	// ProInterest returns the guild's answer to the Pro waitlist; the zero value when none.
-	ProInterest(ctx context.Context, guildID string) (domain.ProInterest, error)
-	// SetProInterest stores it, replacing an earlier answer.
-	SetProInterest(ctx context.Context, guildID string, p domain.ProInterest) (domain.ProInterest, error)
 }
 
 type MemberRepository interface {

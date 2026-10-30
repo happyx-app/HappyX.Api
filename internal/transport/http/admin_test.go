@@ -121,15 +121,13 @@ func TestAdmin(t *testing.T) {
 		} `json:"days"`
 		Weeks  []map[string]any `json:"weeks"`
 		Phase0 struct {
-			ActiveGuilds  int            `json:"active_guilds"`
-			OverFree      int            `json:"over_free"`
-			ProInterested int            `json:"pro_interested"`
-			ProPrices     map[string]int `json:"pro_prices"`
+			ActiveGuilds int `json:"active_guilds"`
+			OverFree     int `json:"over_free"`
 		} `json:"phase0"`
 	}
 	getJSON(t, admin, "/admin/overview", &o)
 	// One person answering is not an active server yet, and nobody is past the free plan.
-	if p := o.Phase0; p.ActiveGuilds != 0 || p.OverFree != 0 || p.ProInterested != 0 || len(p.ProPrices) != 4 || p.ProPrices["9"] != 0 {
+	if p := o.Phase0; p.ActiveGuilds != 0 || p.OverFree != 0 {
 		t.Fatalf("phase0: %+v", p)
 	}
 	if o.Guilds["with_bot"] != 2 || o.Guilds["idle"] != 1 || o.Guilds["left"] != 1 {

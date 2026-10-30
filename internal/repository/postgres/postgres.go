@@ -248,26 +248,6 @@ func (r *GuildRepo) Removing(ctx context.Context, guildID string) (bool, error) 
 	return ok, err
 }
 
-func (r *GuildRepo) ProInterest(ctx context.Context, guildID string) (domain.ProInterest, error) {
-	var p domain.ProInterest
-	err := r.db.QueryRow(ctx, `
-		SELECT p.interested, p.price, p.updated_at FROM pro_interest p JOIN guilds g ON g.id = p.guild_id
-		WHERE g.discord_id = $1`, guildID).Scan(&p.Interested, &p.Price, &p.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ProInterest{}, nil
-	}
-	return p, err
-}
-
-func (r *GuildRepo) SetProInterest(ctx context.Context, guildID string, p domain.ProInterest) (domain.ProInterest, error) {
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO pro_interest (guild_id, interested, price)
-		SELECT id, $2, $3 FROM guilds WHERE discord_id = $1
-		ON CONFLICT (guild_id) DO UPDATE SET interested = EXCLUDED.interested, price = EXCLUDED.price, updated_at = now()
-		RETURNING interested, price, updated_at`, guildID, p.Interested, p.Price).Scan(&p.Interested, &p.Price, &p.UpdatedAt)
-	return p, notFound(err)
-}
-
 func (r *GuildRepo) DoneRemoving(ctx context.Context, guildID string) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM guild_removals WHERE discord_id = $1`, guildID)
 	return err

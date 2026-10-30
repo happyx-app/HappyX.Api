@@ -122,10 +122,8 @@ type AdminOverview struct {
 	}
 	// Phase0 are the numbers that decide whether paid plans are worth building.
 	Phase0 struct {
-		ActiveGuilds  int            // guilds where FreeLimitActive or more people answered in the last 7 days
-		OverFree      int            // guilds whose survey reaches more than FreePlanPeople
-		ProInterested int            // guilds that clicked «I'm interested» on the Pro waitlist
-		ProPrices     map[string]int // answers to «How much would you pay?», by ProPrices value
+		ActiveGuilds int // guilds where FreeLimitActive or more people answered in the last 7 days
+		OverFree     int // guilds whose survey reaches more than FreePlanPeople
 	}
 	Failed7d map[DispatchKind]int
 	Days     []AdminDay  // oldest first

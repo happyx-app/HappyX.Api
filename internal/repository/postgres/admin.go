@@ -91,34 +91,11 @@ func (r *AdminRepo) Overview(ctx context.Context, now time.Time) (domain.AdminOv
 		          WHERE g.active AND (g.survey_roles_mode = 'all'
 		                OR (g.survey_roles_mode = 'only' AND m.role_ids && g.survey_role_ids)
 		                OR (g.survey_roles_mode = 'except' AND NOT m.role_ids && g.survey_role_ids))
-		          GROUP BY g.id HAVING count(*) > $3) o),
-		       (SELECT count(*) FROM pro_interest p JOIN guilds g ON g.id = p.guild_id AND g.active WHERE p.interested)`,
-		today, domain.FreeLimitActive, domain.FreePlanPeople).Scan(&o.Phase0.ActiveGuilds, &o.Phase0.OverFree, &o.Phase0.ProInterested)
+		          GROUP BY g.id HAVING count(*) > $3) o)`,
+		today, domain.FreeLimitActive, domain.FreePlanPeople).Scan(&o.Phase0.ActiveGuilds, &o.Phase0.OverFree)
 	if err != nil {
 		return o, err
 	}
-	o.Phase0.ProPrices = map[string]int{}
-	for _, p := range domain.ProPrices {
-		o.Phase0.ProPrices[p] = 0
-	}
-	prices, err := r.db.Query(ctx, `
-		SELECT p.price, count(*) FROM pro_interest p JOIN guilds g ON g.id = p.guild_id AND g.active
-		WHERE p.price <> '' GROUP BY p.price`)
-	if err != nil {
-		return o, err
-	}
-	for prices.Next() {
-		var p string
-		var n int
-		if err := prices.Scan(&p, &n); err != nil {
-			return o, err
-		}
-		o.Phase0.ProPrices[p] = n
-	}
-	if err := prices.Err(); err != nil {
-		return o, err
-	}
-
 	o.Failed7d = map[domain.DispatchKind]int{}
 	rows, err := r.db.Query(ctx, `
 		SELECT kind, coalesce(sum(failed), 0) FROM dispatches

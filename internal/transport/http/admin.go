@@ -144,9 +144,8 @@ func (s *AdminServer) overview(w http.ResponseWriter, r *http.Request) {
 			"active_7d": o.People.Week, "active_30d": o.People.Month, "repeat_7d": o.People.Repeat},
 		"usage": map[string]int{"answers_7d": o.Usage.Answers7d, "with_message_7d": o.Usage.WithMessage7d, "kudos_7d": o.Usage.Kudos7d,
 			"games_on": o.Usage.GamesOn, "proposals_7d": o.Usage.Proposals7d, "game_answers_7d": o.Usage.GameAnswers7d},
-		// The market study's Phase 0 goal: 50 active servers and 10 that would pay.
-		"phase0": map[string]any{"active_guilds": o.Phase0.ActiveGuilds, "over_free": o.Phase0.OverFree,
-			"pro_interested": o.Phase0.ProInterested, "pro_prices": o.Phase0.ProPrices},
+		// The market study's Phase 0 goal counts active servers.
+		"phase0":    map[string]int{"active_guilds": o.Phase0.ActiveGuilds, "over_free": o.Phase0.OverFree},
 		"failed_7d": kindCounts(o.Failed7d),
 		"days":      days,
 		"weeks":     adminWeeks(o.Weeks),
