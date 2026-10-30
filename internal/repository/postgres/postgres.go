@@ -788,6 +788,21 @@ func (r *DispatchRepo) Claim(ctx context.Context, guildID string, kind domain.Di
 	return tag.RowsAffected() == 1, nil
 }
 
+func (r *DispatchRepo) ListFinished(ctx context.Context, guildID string, kind domain.DispatchKind, from, to time.Time) ([]domain.DispatchStat, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT d.period, d.recipients, coalesce(d.failed, 0) FROM dispatches d JOIN guilds g ON g.id = d.guild_id
+		WHERE g.discord_id = $1 AND d.kind = $2 AND d.period BETWEEN $3 AND $4 AND d.recipients IS NOT NULL
+		ORDER BY d.period`, guildID, string(kind), from, to)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.DispatchStat, error) {
+		var d domain.DispatchStat
+		err := row.Scan(&d.Day, &d.Recipients, &d.Failed)
+		return d, err
+	})
+}
+
 func (r *DispatchRepo) Release(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE dispatches d SET released_at = now()

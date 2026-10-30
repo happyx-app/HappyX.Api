@@ -62,6 +62,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/me/data", s.requireViewer(s.webMyData))
 	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
+	mux.Handle("GET /web/guilds/{guildID}/health", s.requireViewer(s.webHealth))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
 	mux.Handle("GET /web/guilds/{guildID}/roles", s.requireViewer(s.webRoles))
 	mux.Handle("GET /web/guilds/{guildID}/channels", s.requireViewer(s.webChannels))
@@ -203,6 +204,34 @@ func (s *Server) webReport(w http.ResponseWriter, r *http.Request, v domain.View
 		return
 	}
 	s.writeReport(w, r, g)
+}
+
+// webHealth tells the dashboard who the survey reaches now and how the last one went.
+func (s *Server) webHealth(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"), domain.AccessView)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	h, err := s.svc.GuildHealth(r.Context(), g)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	type lastDTO struct {
+		Day        string `json:"day"`
+		Recipients int    `json:"recipients"`
+		Failed     int    `json:"failed"`
+	}
+	out := struct {
+		Audience   int      `json:"audience"`
+		OptedOut   int      `json:"opted_out"`
+		LastSurvey *lastDTO `json:"last_survey"`
+	}{Audience: h.Audience, OptedOut: h.OptedOut}
+	if l := h.LastSurvey; l != nil {
+		out.LastSurvey = &lastDTO{Day: l.Day.Format(dateLayout), Recipients: l.Recipients, Failed: l.Failed}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // webUpdateSettings changes a server's settings from the dashboard: the same options as the

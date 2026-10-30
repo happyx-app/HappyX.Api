@@ -120,6 +120,11 @@ type AdminOverview struct {
 		Proposals7d   int
 		GameAnswers7d int
 	}
+	// Phase0 are the numbers that decide whether paid plans are worth building.
+	Phase0 struct {
+		ActiveGuilds int // guilds where FreeLimitActive or more people answered in the last 7 days
+		OverFree     int // guilds whose survey reaches more than FreePlanPeople
+	}
 	Failed7d map[DispatchKind]int
 	Days     []AdminDay  // oldest first
 	Weeks    []AdminWeek // the last 12, oldest first

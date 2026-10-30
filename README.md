@@ -166,6 +166,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
 | GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
 | GET | `/web/guilds/{guildID}/report` | same query and body as the `/v1` report |
+| GET | `/web/guilds/{guildID}/health` | `audience` (members who would get the survey now: opted in, in the server, allowed by the survey roles), `opted_out`, and `last_survey` (`day`, `recipients`, `failed`; `null` if none in the last 14 days) |
 | GET | `/web/guilds/{guildID}/game` | `{current, previous}`: this week's round and last week's, as the member sees them (authors only once finished). 404 unless games are on and the user takes part |
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
@@ -210,7 +211,7 @@ restarts.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/admin/overview` | `guilds` (`with_bot`, `idle`: no answers for 14 days, `left`, `deleted`, `new_7d`, `left_7d`), `people` (`members`, `opted_out`, `active_today`, `active_7d`, `active_30d`, `repeat_7d`: answered 3 or more days), `usage`, `failed_7d` by kind, `days` (the last 30: `answers`, `with_message`, `recipients`, `answered`, `failed`) and `weeks` (the last 12: `recipients`, `answered`, `answers`, `joins`, `leaves`, `guilds`) |
+| GET | `/admin/overview` | `guilds` (`with_bot`, `idle`: no answers for 14 days, `left`, `deleted`, `new_7d`, `left_7d`), `people` (`members`, `opted_out`, `active_today`, `active_7d`, `active_30d`, `repeat_7d`: answered 3 or more days), `usage`, `failed_7d` by kind, `days` (the last 30: `answers`, `with_message`, `recipients`, `answered`, `failed`), `weeks` (the last 12: `recipients`, `answered`, `answers`, `joins`, `leaves`, `guilds`) and `phase0` (`active_guilds`: 5 or more people answered in 7 days, `over_free`: survey reaches more than 15) |
 | GET | `/admin/guilds` | every server: `status` (`active`, `idle` or `left`, with `purge_at`), `members`, `opted_out`, `active_7d`, `last_answer`, `recipients_7d`, `answered_7d`, `failed_7d` |
 | GET | `/admin/guilds/{guildID}` | one server: `guild` as above, `settings` (only whether there is a custom message, never its text), the last 8 `weeks`, `kudos_7d`, `answers_30d`, `with_message_30d`, `last_report`, `game_answers_7d` |
 | GET | `/admin/health` | `bot` (`last_seen`, `online`: called in the last 5 minutes), `api` (`version`, `started_at`, the last 24 `hours` with `requests`, `errors`, `p50_ms`, `p95_ms`), `deliveries` (the last 14 days, `sent` and `failed` by kind), `database` and `backups` |
@@ -252,7 +253,12 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, dispatch already claimed, games off or game step closed), 429 (kudos limit).
 
 The report also has `kudos`: `count`, `givers`, `receivers` and up to five `highlights` (the
-latest, newest first, each with `day`, both IDs and usernames, `message` and `created_at`).
+latest, newest first, each with `day`, both IDs and usernames, `message` and `created_at`) and
+up to three `top_receivers` (`discord_user_id`, `username`, `count`, most first).
+
+Days the bot reported how many people it sent the survey to carry `recipients`, and the report
+then has `participation`: `recipients` (surveys sent on those days) and `answered` (answers on
+those days, at most one per survey). Without any such day `participation` is left out.
 
 ## Development
 

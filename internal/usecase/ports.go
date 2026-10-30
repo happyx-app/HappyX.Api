@@ -83,6 +83,9 @@ type DispatchRepository interface {
 	// Finish records how many people a claimed dispatch went to and how many DMs failed.
 	// domain.ErrNotFound when it wasn't claimed.
 	Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error
+	// ListFinished returns the dispatches of kind with periods in [from, to] whose recipients
+	// the bot reported, oldest first.
+	ListFinished(ctx context.Context, guildID string, kind domain.DispatchKind, from, to time.Time) ([]domain.DispatchStat, error)
 }
 
 type MoodRepository interface {
