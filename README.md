@@ -166,12 +166,14 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
 | GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
 | GET | `/web/guilds/{guildID}/report` | same query and body as the `/v1` report |
+| GET | `/web/guilds/{guildID}/health` | `audience` (members who would get the survey now: opted in, in the server, allowed by the survey roles), `opted_out`, and `last_survey` (`day`, `recipients`, `failed`; `null` if none in the last 14 days) |
 | GET | `/web/guilds/{guildID}/game` | `{current, previous}`: this week's round and last week's, as the member sees them (authors only once finished). 404 unless games are on and the user takes part |
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
 | PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `report_dm`, `language`, `games_enabled`, `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `report_dm`, `language`, `games_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
 | GET | `/web/guilds/{guildID}/roles` | the server's Discord roles (`id`, `name`, `color`, `position`, highest first), for the settings' pickers. Needs **manage** |
+| GET | `/web/guilds/{guildID}/channels` | the server's text and announcement channels (`id`, `name`, `category`, `position`, `can_post`), in Discord's order, for the kudos channel picker. Needs **manage** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |
 | PUT | `/web/guilds/{guildID}/access` | `admin_discord_user_id` and the full `grants` list (at most 50). The admin and granted users must be in the server, roles must exist. Needs **owner** and `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, dispatches); the bot then leaves it. Needs **owner** and `Content-Type: application/json`. 204 |
@@ -209,7 +211,7 @@ restarts.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/admin/overview` | `guilds` (`with_bot`, `idle`: no answers for 14 days, `left`, `deleted`, `new_7d`, `left_7d`), `people` (`members`, `opted_out`, `active_today`, `active_7d`, `active_30d`, `repeat_7d`: answered 3 or more days), `usage`, `failed_7d` by kind, `days` (the last 30: `answers`, `with_message`, `recipients`, `answered`, `failed`) and `weeks` (the last 12: `recipients`, `answered`, `answers`, `joins`, `leaves`, `guilds`) |
+| GET | `/admin/overview` | `guilds` (`with_bot`, `idle`: no answers for 14 days, `left`, `deleted`, `new_7d`, `left_7d`), `people` (`members`, `opted_out`, `active_today`, `active_7d`, `active_30d`, `repeat_7d`: answered 3 or more days), `usage`, `failed_7d` by kind, `days` (the last 30: `answers`, `with_message`, `recipients`, `answered`, `failed`), `weeks` (the last 12: `recipients`, `answered`, `answers`, `joins`, `leaves`, `guilds`) and `phase0` (`active_guilds`: 5 or more people answered in 7 days, `over_free`: survey reaches more than 15) |
 | GET | `/admin/guilds` | every server: `status` (`active`, `idle` or `left`, with `purge_at`), `members`, `opted_out`, `active_7d`, `last_answer`, `recipients_7d`, `answered_7d`, `failed_7d` |
 | GET | `/admin/guilds/{guildID}` | one server: `guild` as above, `settings` (only whether there is a custom message, never its text), the last 8 `weeks`, `kudos_7d`, `answers_30d`, `with_message_30d`, `last_report`, `game_answers_7d` |
 | GET | `/admin/health` | `bot` (`last_seen`, `online`: called in the last 5 minutes), `api` (`version`, `started_at`, the last 24 `hours` with `requests`, `errors`, `p50_ms`, `p95_ms`), `deliveries` (the last 14 days, `sent` and `failed` by kind), `database` and `backups` |
@@ -226,7 +228,7 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | GET | `/v1/guilds` | | active guilds (for the bot's scheduler) |
 | POST | `/v1/guilds` | `discord_guild_id`, `name`, `admin_discord_user_id` | register on join; idempotent, keeps settings and the admin of a known server |
 | GET | `/v1/guilds/{guildID}` | | |
-| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `report_dm` (send the report to the main admin by DM; default `true`, `false` means web and `/report` only), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`), `survey_roles` and `game_roles` (see «Survey roles») | |
+| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `report_dm` (send the report to the main admin by DM; default `true`, `false` means web and `/report` only), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it; once the bot has sent the channels, it must be one of them), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`), `survey_roles` and `game_roles` (see «Survey roles») | |
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys and hides the server from the dashboard. Data is kept 30 days in case the bot is added back, then deleted |
 | GET | `/v1/removals` | | Discord IDs of the servers deleted from the dashboard that the bot must leave |
 | DELETE | `/v1/removals/{guildID}` | | the bot has left the server. Until then `POST /v1/guilds` for it answers 410 |
@@ -236,6 +238,7 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out; `?left=true` when they left the server, which also ends their dashboard access |
 | GET | `/v1/guilds/{guildID}/members/{userID}/access` | | `{level}`: `none`, `view`, `manage` or `owner`, for the bot's admin commands. `?discord_admin=true` when Discord says they own the server or are an Administrator |
 | PUT | `/v1/guilds/{guildID}/roles` | `roles`: `[{id, name, color, position}]` | replaces the server's roles; grants to roles that are gone are dropped. 204 |
+| PUT | `/v1/guilds/{guildID}/channels` | `channels`: up to 500 `[{id, name, category, position, can_post}]` | replaces the server's text and announcement channels (`position` is the order in Discord's list, `can_post` whether the bot may post there); a deleted kudos channel is cleared. 204 |
 | PUT | `/v1/guilds/{guildID}/members/{userID}/mood` | `mood` (1-5), `message` (optional, ≤500), `day` (optional `YYYY-MM-DD`) | one answer per day; answering again replaces it |
 | GET | `/v1/guilds/{guildID}/report` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` | without a range: last complete week or month |
 | POST | `/v1/guilds/{guildID}/kudos` | `from_discord_user_id`, `to_discord_user_id`, `message` (1-300) | 201 with the kudos and both usernames. Both must be known members (paused is fine), not the same person; at most 10 per giver per day (429) |
@@ -243,13 +246,19 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | GET | `/v1/guilds/{guildID}/game/rounds/{week}` | | `phase` (`answering`/`guessing`/`finished`), `answers` count, `guessing_starts`, `last_day` |
 | PUT | `/v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}` | `answer` (1-200) | replaces an earlier answer. 403 for paused members, 409 once answering is over |
 | PUT | `/v1/guilds/{guildID}/game/proposals/{userID}` | `question` (1-200) | proposes next week's question, replacing an earlier one; returns its `week`. 403 for paused members, 409 Monday to Wednesday |
-| POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`/`game`/`game_guess`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent. Makes scheduled sends exactly-once across restarts |
+| POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`/`game`/`game_guess`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent (or reached nobody 3 times). Makes scheduled sends exactly-once across restarts |
 | PUT | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | `recipients`, `failed` (optional, default 0) | after a claimed send: how many people it went to and how many DMs failed (usually DMs closed). 204; 404 if it wasn't claimed. Only counts, for the admin dashboard |
+| DELETE | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | | gives back a claim whose send reached nobody (the API or Discord failed, or every DM failed), so the next claim for that period can try again, up to 3 tries in all. 204; 404 if it isn't claimed or is already given back |
 
 Errors are `{"error": "..."}` with 400 (validation), 401, 403 (not a member), 404, 409 (inactive guild, dispatch already claimed, games off or game step closed), 429 (kudos limit).
 
 The report also has `kudos`: `count`, `givers`, `receivers` and up to five `highlights` (the
-latest, newest first, each with `day`, both IDs and usernames, `message` and `created_at`).
+latest, newest first, each with `day`, both IDs and usernames, `message` and `created_at`) and
+up to three `top_receivers` (`discord_user_id`, `username`, `count`, most first).
+
+Days the bot reported how many people it sent the survey to carry `recipients`, and the report
+then has `participation`: `recipients` (surveys sent on those days) and `answered` (answers on
+those days, at most one per survey). Without any such day `participation` is left out.
 
 ## Development
 

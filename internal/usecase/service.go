@@ -75,7 +75,8 @@ type SettingsPatch struct {
 	ReportFrequency *domain.ReportFrequency
 	ReportDM        *bool
 	AdminDiscordID  *string
-	// KudosChannelID set to "" goes back to posting where the command is used.
+	// KudosChannelID set to "" goes back to posting where the command is used. Otherwise it must
+	// be one of the guild's channels.
 	KudosChannelID *string
 	GamesEnabled   *bool
 	WorkingDays    *domain.Weekdays
@@ -112,6 +113,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 		st.ReportDM = *p.ReportDM
 	}
 	if p.KudosChannelID != nil {
+		if err := s.checkChannelExists(ctx, guildID, *p.KudosChannelID); err != nil {
+			return domain.Guild{}, err
+		}
 		st.KudosChannelID = *p.KudosChannelID
 	}
 	if p.GamesEnabled != nil {
@@ -396,7 +400,7 @@ func (s *Service) GiveKudos(ctx context.Context, in GiveKudosInput) (domain.Kudo
 // --- Dispatches ---
 
 // ClaimDispatch lets the bot reserve sending a survey or report for a period exactly once.
-// It returns false when it was already sent.
+// It returns false when it was already sent, or when it reached nobody MaxDispatchAttempts times.
 func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
 	if !kind.Valid() {
 		return false, domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\" or \"game_guess\""}
@@ -407,7 +411,15 @@ func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain
 	if _, err := s.activeGuild(ctx, guildID); err != nil {
 		return false, err
 	}
-	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period))
+	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period), domain.MaxDispatchAttempts)
+}
+
+// ReleaseDispatch gives back a claim whose send reached nobody, so the bot can try it again.
+func (s *Service) ReleaseDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error {
+	if !kind.Valid() {
+		return domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\" or \"game_guess\""}
+	}
+	return s.dispatches.Release(ctx, guildID, kind, domain.TruncateDay(period))
 }
 
 // FinishDispatch records, after a claimed send, how many people it went to and how many of
@@ -456,9 +468,44 @@ func (s *Service) Report(ctx context.Context, guildID string, from, to time.Time
 	if err != nil {
 		return domain.Report{}, err
 	}
+	sent, err := s.dispatches.ListFinished(ctx, guildID, domain.DispatchSurvey, from, to)
+	if err != nil {
+		return domain.Report{}, err
+	}
 	r := domain.BuildReport(g, from, to, entries, usernames)
 	r.Kudos = domain.SummarizeKudos(kudos)
+	r.AddParticipation(sent)
 	return r, nil
+}
+
+// healthLookback is how far back the dashboard looks for the last survey sent.
+const healthLookback = 14
+
+// GuildHealth tells the dashboard who the survey reaches now and how the last one went.
+func (s *Service) GuildHealth(ctx context.Context, g domain.Guild) (domain.GuildHealth, error) {
+	var h domain.GuildHealth
+	ms, err := s.members.ListInServer(ctx, g.DiscordID)
+	if err != nil {
+		return h, err
+	}
+	for _, m := range ms {
+		switch {
+		case !m.Active:
+			h.OptedOut++
+		case g.Settings.SurveyRoles.Includes(m.RoleIDs):
+			h.Audience++
+		}
+	}
+	today := s.today(g)
+	sent, err := s.dispatches.ListFinished(ctx, g.DiscordID, domain.DispatchSurvey, today.AddDate(0, 0, -healthLookback), today)
+	if err != nil {
+		return h, err
+	}
+	if len(sent) > 0 {
+		last := sent[len(sent)-1]
+		h.LastSurvey = &last
+	}
+	return h, nil
 }
 
 // --- Web dashboard ---

@@ -62,8 +62,10 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/me/data", s.requireViewer(s.webMyData))
 	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
+	mux.Handle("GET /web/guilds/{guildID}/health", s.requireViewer(s.webHealth))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
 	mux.Handle("GET /web/guilds/{guildID}/roles", s.requireViewer(s.webRoles))
+	mux.Handle("GET /web/guilds/{guildID}/channels", s.requireViewer(s.webChannels))
 	mux.Handle("DELETE /web/guilds/{guildID}", s.requireViewer(s.webDeleteGuild))
 	mux.Handle("GET /web/guilds/{guildID}/access", s.requireViewer(s.webAccess))
 	mux.Handle("PUT /web/guilds/{guildID}/access", s.requireViewer(s.webSetAccess))
@@ -204,6 +206,34 @@ func (s *Server) webReport(w http.ResponseWriter, r *http.Request, v domain.View
 	s.writeReport(w, r, g)
 }
 
+// webHealth tells the dashboard who the survey reaches now and how the last one went.
+func (s *Server) webHealth(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	g, err := s.svc.ViewerGuild(r.Context(), v, r.PathValue("guildID"), domain.AccessView)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	h, err := s.svc.GuildHealth(r.Context(), g)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	type lastDTO struct {
+		Day        string `json:"day"`
+		Recipients int    `json:"recipients"`
+		Failed     int    `json:"failed"`
+	}
+	out := struct {
+		Audience   int      `json:"audience"`
+		OptedOut   int      `json:"opted_out"`
+		LastSurvey *lastDTO `json:"last_survey"`
+	}{Audience: h.Audience, OptedOut: h.OptedOut}
+	if l := h.LastSurvey; l != nil {
+		out.LastSurvey = &lastDTO{Day: l.Day.Format(dateLayout), Recipients: l.Recipients, Failed: l.Failed}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // webUpdateSettings changes a server's settings from the dashboard: the same options as the
 // bot's /happyx config, except who receives the reports (see webSetAccess). It needs the
 // "manage" level.
@@ -224,6 +254,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		ReportFrequency *string        `json:"report_frequency"`
 		ReportDM        *bool          `json:"report_dm"`
 		GamesEnabled    *bool          `json:"games_enabled"`
+		KudosChannelID  *string        `json:"kudos_channel_id"` // "" posts where the command is used
 		WorkingDays     *[]int         `json:"working_days"`
 		SurveyMessage   *string        `json:"survey_message"` // "" goes back to the default text
 		SurveyRoles     *roleFilterDTO `json:"survey_roles"`
@@ -234,7 +265,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	}
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
-		GamesEnabled: in.GamesEnabled, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
+		GamesEnabled: in.GamesEnabled, KudosChannelID: in.KudosChannelID, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
 		SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(),
 	}
 	if in.ReportFrequency != nil {
@@ -263,6 +294,21 @@ func (s *Server) webRoles(w http.ResponseWriter, r *http.Request, v domain.Viewe
 	out := make([]roleDTO, 0, len(roles))
 	for _, ro := range roles {
 		out = append(out, roleDTO{DiscordID: ro.DiscordID, Name: ro.Name, Color: ro.Color, Position: ro.Position})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// webChannels lists the server's text and announcement channels, in Discord's order, for the
+// kudos channel picker.
+func (s *Server) webChannels(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	channels, err := s.svc.GuildChannels(r.Context(), v, r.PathValue("guildID"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	out := make([]channelDTO, 0, len(channels))
+	for _, c := range channels {
+		out = append(out, channelDTO{DiscordID: c.DiscordID, Name: c.Name, Category: c.Category, Position: c.Position, CanPost: c.CanPost})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
