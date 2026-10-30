@@ -400,7 +400,7 @@ func (s *Service) GiveKudos(ctx context.Context, in GiveKudosInput) (domain.Kudo
 // --- Dispatches ---
 
 // ClaimDispatch lets the bot reserve sending a survey or report for a period exactly once.
-// It returns false when it was already sent.
+// It returns false when it was already sent, or when it reached nobody MaxDispatchAttempts times.
 func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
 	if !kind.Valid() {
 		return false, domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\" or \"game_guess\""}
@@ -411,7 +411,15 @@ func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain
 	if _, err := s.activeGuild(ctx, guildID); err != nil {
 		return false, err
 	}
-	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period))
+	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period), domain.MaxDispatchAttempts)
+}
+
+// ReleaseDispatch gives back a claim whose send reached nobody, so the bot can try it again.
+func (s *Service) ReleaseDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error {
+	if !kind.Valid() {
+		return domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\" or \"game_guess\""}
+	}
+	return s.dispatches.Release(ctx, guildID, kind, domain.TruncateDay(period))
 }
 
 // FinishDispatch records, after a claimed send, how many people it went to and how many of

@@ -518,7 +518,7 @@ func (s *Server) giveKudos(w http.ResponseWriter, r *http.Request) {
 // --- Dispatches ---
 
 // claimDispatch answers 201 when the caller should send the survey or report for that period,
-// and 409 when it was already sent.
+// and 409 when it was already sent (or reached nobody too many times).
 func (s *Server) claimDispatch(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Kind   string `json:"kind"`
@@ -563,6 +563,20 @@ func (s *Server) finishDispatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.svc.FinishDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period, *in.Recipients, in.Failed); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// releaseDispatch gives back the claim of a send that reached nobody, so it can be retried.
+func (s *Server) releaseDispatch(w http.ResponseWriter, r *http.Request) {
+	period, err := time.Parse(dateLayout, r.PathValue("period"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "period must be YYYY-MM-DD")
+		return
+	}
+	if err := s.svc.ReleaseDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period); err != nil {
 		s.fail(w, r, err)
 		return
 	}
