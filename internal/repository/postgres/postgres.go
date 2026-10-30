@@ -772,11 +772,16 @@ type DispatchRepo struct{ db *pgxpool.Pool }
 
 func NewDispatchRepo(db *pgxpool.Pool) *DispatchRepo { return &DispatchRepo{db: db} }
 
-func (r *DispatchRepo) Claim(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
+func (r *DispatchRepo) Claim(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, maxAttempts int) (bool, error) {
+	// A released claim is taken again as a fresh try, without the counts of the one that failed.
 	tag, err := r.db.Exec(ctx, `
 		INSERT INTO dispatches (guild_id, kind, period)
 		SELECT id, $2, $3 FROM guilds WHERE discord_id = $1
-		ON CONFLICT DO NOTHING`, guildID, string(kind), period)
+		ON CONFLICT (guild_id, kind, period) DO UPDATE
+		SET attempts = dispatches.attempts + 1, released_at = NULL, created_at = now(),
+		    recipients = NULL, failed = NULL, finished_at = NULL
+		WHERE dispatches.released_at IS NOT NULL AND dispatches.attempts < $4`,
+		guildID, string(kind), period, maxAttempts)
 	if err != nil {
 		return false, err
 	}
@@ -796,6 +801,21 @@ func (r *DispatchRepo) ListFinished(ctx context.Context, guildID string, kind do
 		err := row.Scan(&d.Day, &d.Recipients, &d.Failed)
 		return d, err
 	})
+}
+
+func (r *DispatchRepo) Release(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE dispatches d SET released_at = now()
+		FROM guilds g
+		WHERE g.discord_id = $1 AND d.guild_id = g.id AND d.kind = $2 AND d.period = $3 AND d.released_at IS NULL`,
+		guildID, string(kind), period)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *DispatchRepo) Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error {

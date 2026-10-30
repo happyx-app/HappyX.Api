@@ -202,6 +202,10 @@ const (
 	DispatchGameGuess DispatchKind = "game_guess"
 )
 
+// MaxDispatchAttempts is how many times a send that reached nobody can be claimed for the same
+// period: the first try and two retries.
+const MaxDispatchAttempts = 3
+
 func (k DispatchKind) Valid() bool {
 	switch k {
 	case DispatchSurvey, DispatchReport, DispatchGame, DispatchGameGuess:

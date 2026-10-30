@@ -76,6 +76,14 @@ type roleDTO struct {
 	Position  int    `json:"position"`
 }
 
+type channelDTO struct {
+	DiscordID string `json:"id"`
+	Name      string `json:"name"`
+	Category  string `json:"category"`
+	Position  int    `json:"position"`
+	CanPost   bool   `json:"can_post"`
+}
+
 type memberDTO struct {
 	DiscordID string    `json:"discord_user_id"`
 	Username  string    `json:"username"`
@@ -391,6 +399,25 @@ func (s *Server) syncRoles(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// syncChannels replaces the guild's text and announcement channels with {"channels": [...]}.
+func (s *Server) syncChannels(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Channels []channelDTO `json:"channels"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	channels := make([]domain.Channel, 0, len(in.Channels))
+	for _, c := range in.Channels {
+		channels = append(channels, domain.Channel{DiscordID: c.DiscordID, Name: c.Name, Category: c.Category, Position: c.Position, CanPost: c.CanPost})
+	}
+	if err := s.svc.SyncChannels(r.Context(), r.PathValue("guildID"), channels); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Moods ---
 
 func (s *Server) recordMood(w http.ResponseWriter, r *http.Request) {
@@ -515,7 +542,7 @@ func (s *Server) giveKudos(w http.ResponseWriter, r *http.Request) {
 // --- Dispatches ---
 
 // claimDispatch answers 201 when the caller should send the survey or report for that period,
-// and 409 when it was already sent.
+// and 409 when it was already sent (or reached nobody too many times).
 func (s *Server) claimDispatch(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Kind   string `json:"kind"`
@@ -560,6 +587,20 @@ func (s *Server) finishDispatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.svc.FinishDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period, *in.Recipients, in.Failed); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// releaseDispatch gives back the claim of a send that reached nobody, so it can be retried.
+func (s *Server) releaseDispatch(w http.ResponseWriter, r *http.Request) {
+	period, err := time.Parse(dateLayout, r.PathValue("period"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "period must be YYYY-MM-DD")
+		return
+	}
+	if err := s.svc.ReleaseDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period); err != nil {
 		s.fail(w, r, err)
 		return
 	}

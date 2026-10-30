@@ -144,3 +144,28 @@ func ResolveAccess(g Guild, userID string, managesInDiscord bool, roleIDs []stri
 	}
 	return level
 }
+
+// Channel is a text or announcement channel of a guild, as the bot last saw it.
+type Channel struct {
+	DiscordID string
+	Name      string
+	Category  string // the category it is in, empty for none
+	Position  int    // lower is listed first, as in Discord's channel list
+	CanPost   bool   // whether the bot may post (and embed) there
+}
+
+func (c Channel) Validate() error {
+	if err := validateSnowflake("channel id", c.DiscordID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(c.Name) == "" || utf8.RuneCountInString(c.Name) > 100 {
+		return invalid("channel name must be 1-100 characters")
+	}
+	if utf8.RuneCountInString(c.Category) > 100 {
+		return invalid("channel category must be at most 100 characters")
+	}
+	return nil
+}
+
+// MaxChannels is Discord's limit on channels per server.
+const MaxChannels = 500

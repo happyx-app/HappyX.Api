@@ -375,6 +375,47 @@ func TestClaimDispatchOnce(t *testing.T) {
 	}
 }
 
+func TestReleasedDispatchRetries(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	mustRegister(t, svc, guildA)
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+
+	claim := func() bool {
+		t.Helper()
+		ok, err := svc.ClaimDispatch(ctx, guildA, domain.DispatchSurvey, day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	release := func() error { return svc.ReleaseDispatch(ctx, guildA, domain.DispatchSurvey, day) }
+
+	if !errors.Is(release(), domain.ErrNotFound) {
+		t.Fatal("releasing an unclaimed dispatch should be not found")
+	}
+	for i := 1; i <= domain.MaxDispatchAttempts; i++ {
+		if !claim() {
+			t.Fatalf("try %d should be claimed", i)
+		}
+		if claim() {
+			t.Fatalf("try %d: a held claim can't be taken again", i)
+		}
+		if err := svc.FinishDispatch(ctx, guildA, domain.DispatchSurvey, day, 2, 2); err != nil {
+			t.Fatal(err)
+		}
+		if err := release(); err != nil {
+			t.Fatalf("try %d: %v", i, err)
+		}
+		if !errors.Is(release(), domain.ErrNotFound) {
+			t.Fatalf("try %d: releasing twice should be not found", i)
+		}
+	}
+	if claim() {
+		t.Fatalf("after %d tries the dispatch should stay given up", domain.MaxDispatchAttempts)
+	}
+}
+
 func TestSyncKeepsOptOut(t *testing.T) {
 	ctx := context.Background()
 	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))

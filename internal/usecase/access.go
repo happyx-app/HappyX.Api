@@ -63,6 +63,22 @@ func (s *Service) SyncRoles(ctx context.Context, guildID string, roles []domain.
 	return s.access.ReplaceRoles(ctx, guildID, out)
 }
 
+// SyncChannels stores the guild's text and announcement channels, as the bot sees them.
+func (s *Service) SyncChannels(ctx context.Context, guildID string, channels []domain.Channel) error {
+	if _, err := s.activeGuild(ctx, guildID); err != nil {
+		return err
+	}
+	if len(channels) > domain.MaxChannels {
+		return domain.ValidationError{Reason: "too many channels"}
+	}
+	for _, c := range channels {
+		if err := c.Validate(); err != nil {
+			return err
+		}
+	}
+	return s.access.ReplaceChannels(ctx, guildID, channels)
+}
+
 // AccessSettings is who has access to a guild, and who could be given it.
 type AccessSettings struct {
 	Guild  domain.Guild
@@ -168,4 +184,30 @@ func (s *Service) GuildRoles(ctx context.Context, v domain.Viewer, guildID strin
 		return nil, err
 	}
 	return s.access.ListRoles(ctx, guildID)
+}
+
+// GuildChannels returns the guild's channels in Discord's order, for those who change its settings.
+func (s *Service) GuildChannels(ctx context.Context, v domain.Viewer, guildID string) ([]domain.Channel, error) {
+	if _, err := s.ViewerGuild(ctx, v, guildID, domain.AccessManage); err != nil {
+		return nil, err
+	}
+	return s.access.ListChannels(ctx, guildID)
+}
+
+// checkChannelExists fails unless the channel is one of the guild's, as the bot last saw them.
+// Guilds whose channels an older bot never sent skip the check.
+func (s *Service) checkChannelExists(ctx context.Context, guildID, id string) error {
+	if id == "" {
+		return nil
+	}
+	channels, err := s.access.ListChannels(ctx, guildID)
+	if err != nil || len(channels) == 0 {
+		return err
+	}
+	for _, c := range channels {
+		if c.DiscordID == id {
+			return nil
+		}
+	}
+	return domain.ValidationError{Reason: "channel " + id + " doesn't exist in the server"}
 }
