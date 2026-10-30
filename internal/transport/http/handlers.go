@@ -76,6 +76,14 @@ type roleDTO struct {
 	Position  int    `json:"position"`
 }
 
+type channelDTO struct {
+	DiscordID string `json:"id"`
+	Name      string `json:"name"`
+	Category  string `json:"category"`
+	Position  int    `json:"position"`
+	CanPost   bool   `json:"can_post"`
+}
+
 type memberDTO struct {
 	DiscordID string    `json:"discord_user_id"`
 	Username  string    `json:"username"`
@@ -368,6 +376,25 @@ func (s *Server) syncRoles(w http.ResponseWriter, r *http.Request) {
 		roles = append(roles, domain.Role{DiscordID: ro.DiscordID, Name: ro.Name, Color: ro.Color, Position: ro.Position})
 	}
 	if err := s.svc.SyncRoles(r.Context(), r.PathValue("guildID"), roles); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// syncChannels replaces the guild's text and announcement channels with {"channels": [...]}.
+func (s *Server) syncChannels(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Channels []channelDTO `json:"channels"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	channels := make([]domain.Channel, 0, len(in.Channels))
+	for _, c := range in.Channels {
+		channels = append(channels, domain.Channel{DiscordID: c.DiscordID, Name: c.Name, Category: c.Category, Position: c.Position, CanPost: c.CanPost})
+	}
+	if err := s.svc.SyncChannels(r.Context(), r.PathValue("guildID"), channels); err != nil {
 		s.fail(w, r, err)
 		return
 	}
