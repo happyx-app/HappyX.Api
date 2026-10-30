@@ -248,6 +248,26 @@ func (r *GuildRepo) Removing(ctx context.Context, guildID string) (bool, error) 
 	return ok, err
 }
 
+func (r *GuildRepo) ProInterest(ctx context.Context, guildID string) (domain.ProInterest, error) {
+	var p domain.ProInterest
+	err := r.db.QueryRow(ctx, `
+		SELECT p.interested, p.price, p.updated_at FROM pro_interest p JOIN guilds g ON g.id = p.guild_id
+		WHERE g.discord_id = $1`, guildID).Scan(&p.Interested, &p.Price, &p.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ProInterest{}, nil
+	}
+	return p, err
+}
+
+func (r *GuildRepo) SetProInterest(ctx context.Context, guildID string, p domain.ProInterest) (domain.ProInterest, error) {
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO pro_interest (guild_id, interested, price)
+		SELECT id, $2, $3 FROM guilds WHERE discord_id = $1
+		ON CONFLICT (guild_id) DO UPDATE SET interested = EXCLUDED.interested, price = EXCLUDED.price, updated_at = now()
+		RETURNING interested, price, updated_at`, guildID, p.Interested, p.Price).Scan(&p.Interested, &p.Price, &p.UpdatedAt)
+	return p, notFound(err)
+}
+
 func (r *GuildRepo) DoneRemoving(ctx context.Context, guildID string) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM guild_removals WHERE discord_id = $1`, guildID)
 	return err
@@ -781,6 +801,21 @@ func (r *DispatchRepo) Claim(ctx context.Context, guildID string, kind domain.Di
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+func (r *DispatchRepo) ListFinished(ctx context.Context, guildID string, kind domain.DispatchKind, from, to time.Time) ([]domain.DispatchStat, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT d.period, d.recipients, coalesce(d.failed, 0) FROM dispatches d JOIN guilds g ON g.id = d.guild_id
+		WHERE g.discord_id = $1 AND d.kind = $2 AND d.period BETWEEN $3 AND $4 AND d.recipients IS NOT NULL
+		ORDER BY d.period`, guildID, string(kind), from, to)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.DispatchStat, error) {
+		var d domain.DispatchStat
+		err := row.Scan(&d.Day, &d.Recipients, &d.Failed)
+		return d, err
+	})
 }
 
 func (r *DispatchRepo) Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error {

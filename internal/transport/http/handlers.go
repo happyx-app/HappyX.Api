@@ -103,6 +103,13 @@ type reportDTO struct {
 	Days           []dayDTO        `json:"days"`
 	Messages       []reportMsgDTO  `json:"messages"`
 	Kudos          kudosSummaryDTO `json:"kudos"`
+	// Participation is left out when the bot reported no recipients in the period.
+	Participation *participationDTO `json:"participation,omitempty"`
+}
+
+type participationDTO struct {
+	Recipients int `json:"recipients"`
+	Answered   int `json:"answered"`
 }
 
 type kudosSummaryDTO struct {
@@ -110,6 +117,14 @@ type kudosSummaryDTO struct {
 	Givers     int        `json:"givers"`
 	Receivers  int        `json:"receivers"`
 	Highlights []kudosDTO `json:"highlights"`
+	// TopReceivers are who got the most kudos, most first.
+	TopReceivers []kudosCountDTO `json:"top_receivers"`
+}
+
+type kudosCountDTO struct {
+	DiscordID string `json:"discord_user_id"`
+	Username  string `json:"username"`
+	Count     int    `json:"count"`
 }
 
 type kudosDTO struct {
@@ -133,6 +148,8 @@ type dayDTO struct {
 	Day       string  `json:"day"`
 	Responses int     `json:"responses"`
 	Average   float64 `json:"average"`
+	// Recipients is how many people got that day's survey; left out when unknown.
+	Recipients *int `json:"recipients,omitempty"`
 }
 
 type reportMsgDTO struct {
@@ -445,7 +462,14 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		Days: []dayDTO{}, Messages: []reportMsgDTO{},
 		Kudos: kudosSummaryDTO{
 			Count: rep.Kudos.Count, Givers: rep.Kudos.Givers, Receivers: rep.Kudos.Receivers, Highlights: []kudosDTO{},
+			TopReceivers: []kudosCountDTO{},
 		},
+	}
+	if p := rep.Participation; p != nil {
+		out.Participation = &participationDTO{Recipients: p.Recipients, Answered: p.Answered}
+	}
+	for _, c := range rep.Kudos.TopReceivers {
+		out.Kudos.TopReceivers = append(out.Kudos.TopReceivers, kudosCountDTO{DiscordID: c.DiscordID, Username: c.Username, Count: c.Count})
 	}
 	for _, k := range rep.Kudos.Highlights {
 		out.Kudos.Highlights = append(out.Kudos.Highlights, toKudosDTO(k))
@@ -454,7 +478,7 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		out.Distribution[strconv.Itoa(int(m))] = n
 	}
 	for _, d := range rep.Days {
-		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average})
+		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average, Recipients: d.Recipients})
 	}
 	for _, m := range rep.Messages {
 		out.Messages = append(out.Messages, reportMsgDTO{

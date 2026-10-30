@@ -40,6 +40,10 @@ type GuildRepository interface {
 	Removing(ctx context.Context, guildID string) (bool, error)
 	// DoneRemoving takes the guild off the removal queue.
 	DoneRemoving(ctx context.Context, guildID string) error
+	// ProInterest returns the guild's answer to the Pro waitlist; the zero value when none.
+	ProInterest(ctx context.Context, guildID string) (domain.ProInterest, error)
+	// SetProInterest stores it, replacing an earlier answer.
+	SetProInterest(ctx context.Context, guildID string, p domain.ProInterest) (domain.ProInterest, error)
 }
 
 type MemberRepository interface {
@@ -76,6 +80,9 @@ type DispatchRepository interface {
 	// Finish records how many people a claimed dispatch went to and how many DMs failed.
 	// domain.ErrNotFound when it wasn't claimed.
 	Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error
+	// ListFinished returns the dispatches of kind with periods in [from, to] whose recipients
+	// the bot reported, oldest first.
+	ListFinished(ctx context.Context, guildID string, kind domain.DispatchKind, from, to time.Time) ([]domain.DispatchStat, error)
 }
 
 type MoodRepository interface {

@@ -456,9 +456,56 @@ func (s *Service) Report(ctx context.Context, guildID string, from, to time.Time
 	if err != nil {
 		return domain.Report{}, err
 	}
+	sent, err := s.dispatches.ListFinished(ctx, guildID, domain.DispatchSurvey, from, to)
+	if err != nil {
+		return domain.Report{}, err
+	}
 	r := domain.BuildReport(g, from, to, entries, usernames)
 	r.Kudos = domain.SummarizeKudos(kudos)
+	r.AddParticipation(sent)
 	return r, nil
+}
+
+// healthLookback is how far back the dashboard looks for the last survey sent.
+const healthLookback = 14
+
+// GuildHealth tells the dashboard who the survey reaches now and how the last one went.
+func (s *Service) GuildHealth(ctx context.Context, g domain.Guild) (domain.GuildHealth, error) {
+	var h domain.GuildHealth
+	ms, err := s.members.ListInServer(ctx, g.DiscordID)
+	if err != nil {
+		return h, err
+	}
+	for _, m := range ms {
+		switch {
+		case !m.Active:
+			h.OptedOut++
+		case g.Settings.SurveyRoles.Includes(m.RoleIDs):
+			h.Audience++
+		}
+	}
+	today := s.today(g)
+	sent, err := s.dispatches.ListFinished(ctx, g.DiscordID, domain.DispatchSurvey, today.AddDate(0, 0, -healthLookback), today)
+	if err != nil {
+		return h, err
+	}
+	if len(sent) > 0 {
+		last := sent[len(sent)-1]
+		h.LastSurvey = &last
+	}
+	return h, nil
+}
+
+// ProInterest is the guild's answer to the Pro waitlist.
+func (s *Service) ProInterest(ctx context.Context, g domain.Guild) (domain.ProInterest, error) {
+	return s.guilds.ProInterest(ctx, g.DiscordID)
+}
+
+func (s *Service) SetProInterest(ctx context.Context, g domain.Guild, p domain.ProInterest) (domain.ProInterest, error) {
+	if err := p.Validate(); err != nil {
+		return domain.ProInterest{}, err
+	}
+	return s.guilds.SetProInterest(ctx, g.DiscordID, p)
 }
 
 // --- Web dashboard ---
