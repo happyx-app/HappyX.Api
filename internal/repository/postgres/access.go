@@ -74,6 +74,53 @@ func (r *AccessRepo) ListRoles(ctx context.Context, guildID string) ([]domain.Ro
 	})
 }
 
+func (r *AccessRepo) ReplaceChannels(ctx context.Context, guildID string, channels []domain.Channel) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
+	var gid int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM guilds WHERE discord_id = $1 FOR KEY SHARE`, guildID).Scan(&gid); err != nil {
+		return notFound(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM guild_channels WHERE guild_id = $1`, gid); err != nil {
+		return err
+	}
+	ids := make([]string, 0, len(channels))
+	for _, c := range channels {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO guild_channels (guild_id, discord_id, name, category, position, can_post) VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (guild_id, discord_id) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.category,
+			       position = EXCLUDED.position, can_post = EXCLUDED.can_post`,
+			gid, c.DiscordID, c.Name, c.Category, c.Position, c.CanPost); err != nil {
+			return err
+		}
+		ids = append(ids, c.DiscordID)
+	}
+	// A deleted kudos channel goes back to posting where the command is used. One the bot can no
+	// longer post in is kept: the bot already falls back there, and the permission may come back.
+	if _, err := tx.Exec(ctx, `UPDATE guilds SET kudos_channel_id = '' WHERE id = $1 AND kudos_channel_id <> '' AND NOT kudos_channel_id = ANY($2)`, gid, ids); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *AccessRepo) ListChannels(ctx context.Context, guildID string) ([]domain.Channel, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT c.discord_id, c.name, c.category, c.position, c.can_post
+		FROM guild_channels c JOIN guilds g ON g.id = c.guild_id
+		WHERE g.discord_id = $1 ORDER BY c.position, c.discord_id`, guildID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Channel, error) {
+		var c domain.Channel
+		err := row.Scan(&c.DiscordID, &c.Name, &c.Category, &c.Position, &c.CanPost)
+		return c, err
+	})
+}
+
 func (r *AccessRepo) ListGrants(ctx context.Context, guildID string) ([]domain.AccessGrant, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT a.kind, a.target_id, a.level

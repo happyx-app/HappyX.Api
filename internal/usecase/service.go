@@ -75,7 +75,8 @@ type SettingsPatch struct {
 	ReportFrequency *domain.ReportFrequency
 	ReportDM        *bool
 	AdminDiscordID  *string
-	// KudosChannelID set to "" goes back to posting where the command is used.
+	// KudosChannelID set to "" goes back to posting where the command is used. Otherwise it must
+	// be one of the guild's channels.
 	KudosChannelID *string
 	GamesEnabled   *bool
 	WorkingDays    *domain.Weekdays
@@ -112,6 +113,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 		st.ReportDM = *p.ReportDM
 	}
 	if p.KudosChannelID != nil {
+		if err := s.checkChannelExists(ctx, guildID, *p.KudosChannelID); err != nil {
+			return domain.Guild{}, err
+		}
 		st.KudosChannelID = *p.KudosChannelID
 	}
 	if p.GamesEnabled != nil {

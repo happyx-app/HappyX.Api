@@ -53,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/guilds/{guildID}/members/{userID}/access", s.memberAccess)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}/mood", s.recordMood)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/roles", s.syncRoles)
+	api.HandleFunc("PUT /v1/guilds/{guildID}/channels", s.syncChannels)
 	api.HandleFunc("GET /v1/guilds/{guildID}/report", s.report)
 	api.HandleFunc("POST /v1/guilds/{guildID}/dispatches", s.claimDispatch)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/dispatches/{kind}/{period}", s.finishDispatch)
