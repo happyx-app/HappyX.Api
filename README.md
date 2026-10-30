@@ -277,4 +277,4 @@ HappyX is developed with AI assistance. Every change is reviewed and approved by
 
 ## License
 
-[AGPL-3.0](LICENSE). Versions published before 30 October 2026 (up to commit [`40589ed`](https://github.com/happyx-app/HappyX.Api/tree/40589ed432cdc8bba9f09ebafd6b7e71891b510e)) remain available under the MIT License.
+[AGPL-3.0](LICENSE). Versions published before 30 October 2026 (up to commit [`e38ac01`](https://github.com/happyx-app/HappyX.Api/tree/e38ac0184c4e3379a6f81c2c21c1c576a0c7bb34)) remain available under the MIT License.
