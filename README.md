@@ -121,6 +121,7 @@ All secrets come from environment variables; nothing is read from files in the r
 | `DISCORD_CLIENT_SECRET` | Discord application OAuth2 secret |
 | `WEB_URL` | Public URL of the dashboard, e.g. `https://happyx.example.com` |
 | `SESSION_SECRET` | At least 32 random characters to sign dashboard sessions (`openssl rand -hex 32`) |
+| `DEMO_ENABLED` | Optional, on by default with the dashboard. Set it to `false` to turn off the public demo (see «Public demo») |
 | `ADMIN_KEY_HASH` | SHA-256 hex digest of the key [HappyX.Admin](https://github.com/happyx-app/HappyX.Admin) sends. Set it to turn on the admin API (see «Admin dashboard»); it must not be one of `API_KEY_HASHES` |
 | `ADMIN_ADDR` | Listen address of the admin API, default `:8081`. Never publish this port |
 | `BACKUP_DIR` | Optional. The database backups folder mounted read-only (e.g. `/backups`), so the admin dashboard can list the latest backups |
@@ -195,6 +196,32 @@ sorted by content within each day. Game answers appear once guessing starts and 
 the round is finished. Nightly database backups still hold erased data until they rotate.
 
 `/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.
+
+### Public demo
+
+`/web/demo/{lang}/...` shows the dashboard of a made-up server, «Demo Team» (12 people, about
+six months of answers, messages, kudos and «Who's who?» rounds), to anyone, without logging in.
+It is what HappyX.Web shows at `/demo`. `{lang}` is `en` or `es` («Equipo Demo»): the team writes
+in that language. Its routes are the dashboard's read routes with the same responses, always seen
+as the demo's main admin:
+
+| Method | Path |
+| --- | --- |
+| GET | `/web/demo/{lang}/me` |
+| GET | `/web/demo/{lang}/me/moods` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/report` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/health` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/roles` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/channels` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/access` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/game` |
+
+The demo server is not in the database. It lives in memory (`internal/repository/demo`) behind
+its own `usecase.Service`, so the demo runs the same report code as real servers but can only
+ever answer with the demo server (ID `100000000000000001`; any other ID is 404). The bot, the
+admin dashboard, exports and backups never see it. Its history is worked out from the date, so a
+day's answers never change and the last six months always end today. There are no write routes:
+nothing a visitor does is saved. `DEMO_ENABLED=false` turns it off.
 
 ## Admin dashboard
 

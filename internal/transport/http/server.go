@@ -21,6 +21,9 @@ type Server struct {
 	log       *slog.Logger
 	web       *Web // nil when the dashboard is not configured
 	metrics   *Metrics
+	// demo serves the public demo; nil when it is off.
+	demos      map[string]*Server // by language
+	demoViewer domain.Viewer
 }
 
 func NewServer(svc *usecase.Service, keyHashes [][]byte, log *slog.Logger) *Server {
@@ -66,6 +69,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/v1/", s.requireKey(api))
 	if s.web != nil {
 		s.webRoutes(mux)
+		if s.demos != nil {
+			s.demoRoutes(mux)
+		}
 	}
 
 	return s.logRequests(mux)

@@ -34,6 +34,8 @@ type Web struct {
 	DiscordClientID     string
 	DiscordClientSecret string
 	SessionSecret       []byte
+	// Demo serves the public demo server at /web/demo. On unless DEMO_ENABLED is "false".
+	Demo bool
 }
 
 func Load() (Config, error) {
@@ -80,6 +82,7 @@ func Load() (Config, error) {
 			DiscordClientID:     os.Getenv("DISCORD_CLIENT_ID"),
 			DiscordClientSecret: os.Getenv("DISCORD_CLIENT_SECRET"),
 			SessionSecret:       []byte(os.Getenv("SESSION_SECRET")),
+			Demo:                !strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_ENABLED")), "false"),
 		}
 		if !strings.HasPrefix(w.PublicURL, "http://") && !strings.HasPrefix(w.PublicURL, "https://") {
 			return c, errors.New("WEB_URL is required with DISCORD_CLIENT_ID (e.g. https://happyx.example.com)")
