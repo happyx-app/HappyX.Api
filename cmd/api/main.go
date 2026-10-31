@@ -14,6 +14,7 @@ import (
 	"github.com/happyx-app/HappyX.Api/internal/config"
 	"github.com/happyx-app/HappyX.Api/internal/discord"
 	"github.com/happyx-app/HappyX.Api/internal/repository/backups"
+	"github.com/happyx-app/HappyX.Api/internal/repository/demo"
 	"github.com/happyx-app/HappyX.Api/internal/repository/postgres"
 	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
 	"github.com/happyx-app/HappyX.Api/internal/usecase"
@@ -59,6 +60,16 @@ func run(log *slog.Logger) error {
 			PublicURL:  w.PublicURL,
 		})
 		log.Info("web dashboard login enabled", "redirect_url", w.RedirectURL())
+		if w.Demo {
+			// The demo has its own Service, on a made-up server kept in memory: it never reads
+			// the database.
+			services := map[string]*usecase.Service{}
+			for _, lang := range demo.Languages {
+				services[lang] = demo.NewStore(lang, time.Now).NewService()
+			}
+			api.WithDemo(httpapi.Demo{Services: services, Viewer: demo.Viewer()})
+			log.Info("public demo enabled", "path", "/web/demo/{lang}", "languages", demo.Languages)
+		}
 	}
 	srv := &http.Server{
 		Addr:              cfg.Addr,
