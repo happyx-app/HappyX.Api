@@ -416,6 +416,28 @@ func (r *MoodRepo) ListBetween(ctx context.Context, guildID string, from, to tim
 		ORDER BY e.day, e.id`, guildID, from, to)
 }
 
+func (r *MoodRepo) AnsweredSince(ctx context.Context, guildID string, since time.Time) (map[string]bool, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT m.discord_id
+		FROM mood_entries e
+		JOIN members m ON m.id = e.member_id
+		JOIN guilds g ON g.id = e.guild_id
+		WHERE g.discord_id = $1 AND e.day >= $2`, guildID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // Streaks counts, for each active member of the guild, how many days in a row up to today they
 // answered, like domain.Streak but in the database, so a big guild sends back one number per
 // member instead of every answer. Answers are read from `from`.

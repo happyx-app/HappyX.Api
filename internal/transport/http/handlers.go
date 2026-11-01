@@ -90,6 +90,9 @@ type memberDTO struct {
 	Active    bool      `json:"active"`
 	CreatedAt time.Time `json:"created_at"`
 	Streak    int       `json:"streak,omitempty"` // only with ?with=streak
+	// PolicyPending (only with ?for=survey) is true while the member hasn't answered since the
+	// privacy policy's date: their survey links the policy.
+	PolicyPending bool `json:"policy_pending,omitempty"`
 }
 
 type moodDTO struct {
@@ -300,9 +303,19 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var pending map[string]bool
+	if purpose == usecase.MembersSurvey {
+		if pending, err = s.svc.MembersPolicyPending(r.Context(), r.PathValue("guildID"), ms); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
 	out := make([]memberDTO, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt, Streak: streaks[m.DiscordID]})
+		out = append(out, memberDTO{
+			DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt,
+			Streak: streaks[m.DiscordID], PolicyPending: pending[m.DiscordID],
+		})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

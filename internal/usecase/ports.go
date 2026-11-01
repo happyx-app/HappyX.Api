@@ -97,6 +97,8 @@ type MoodRepository interface {
 	// Streaks returns each active member's answering streak up to today (see domain.Streak),
 	// reading answers from `from`. Members without one are left out.
 	Streaks(ctx context.Context, guildID string, workingDays domain.Weekdays, from, today time.Time) (map[string]int, error)
+	// AnsweredSince returns the Discord IDs of the guild's members with an answer for `since` or later.
+	AnsweredSince(ctx context.Context, guildID string, since time.Time) (map[string]bool, error)
 }
 
 type KudosRepository interface {
