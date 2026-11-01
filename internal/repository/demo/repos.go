@@ -148,6 +148,19 @@ func (r moods) ListForUser(_ context.Context, userID string, from, to time.Time)
 	return out, nil
 }
 
+func (r moods) AnsweredSince(_ context.Context, guildID string, since time.Time) (map[string]bool, error) {
+	out := map[string]bool{}
+	if guildID != GuildID {
+		return out, nil
+	}
+	for _, e := range r.s.current().moods {
+		if !e.Day.Before(since) {
+			out[e.MemberDiscordID] = true
+		}
+	}
+	return out, nil
+}
+
 func (r moods) Streaks(_ context.Context, guildID string, _ domain.Weekdays, from, today time.Time) (map[string]int, error) {
 	out := map[string]int{}
 	if guildID != GuildID {

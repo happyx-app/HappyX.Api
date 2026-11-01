@@ -306,6 +306,28 @@ func (s *Service) MemberStreaks(ctx context.Context, guildID string) (map[string
 	return s.moods.Streaks(ctx, guildID, w, today.AddDate(0, 0, -streakWindow), today)
 }
 
+// PrivacyPolicyDate is the date of the privacy policy on the website («Last updated»). Until a
+// member answers on that day or later in a guild, their survey there carries a link to it, so
+// people already answering see it once too. Change it with the policy's date in HappyX.Web
+// (src/policy.ts) when the policy changes in a way people should read again.
+var PrivacyPolicyDate = time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+
+// MembersPolicyPending returns the members of the guild who haven't answered since
+// PrivacyPolicyDate, whose survey should link the privacy policy.
+func (s *Service) MembersPolicyPending(ctx context.Context, guildID string, members []domain.Member) (map[string]bool, error) {
+	answered, err := s.moods.AnsweredSince(ctx, guildID, PrivacyPolicyDate)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, m := range members {
+		if !answered[m.DiscordID] {
+			out[m.DiscordID] = true
+		}
+	}
+	return out, nil
+}
+
 // --- Moods ---
 
 type RecordMoodInput struct {
