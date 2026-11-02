@@ -74,6 +74,10 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /web/guilds/{guildID}/game/answer", s.requireViewer(s.webAnswerGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/guesses", s.requireViewer(s.webGuessGame))
 	mux.Handle("PUT /web/guilds/{guildID}/game/proposal", s.requireViewer(s.webProposeQuestion))
+	mux.Handle("GET /web/guilds/{guildID}/canvas", s.requireViewer(s.webCanvas))
+	mux.Handle("DELETE /web/guilds/{guildID}/canvas", s.requireViewer(s.webClearCanvas))
+	mux.Handle("POST /web/guilds/{guildID}/canvas/strokes", s.requireViewer(s.webAddCanvasStroke))
+	mux.Handle("DELETE /web/guilds/{guildID}/canvas/drawings/{drawingID}", s.requireViewer(s.webDeleteCanvasDrawing))
 }
 
 func (s *Server) secureCookies() bool { return strings.HasPrefix(s.web.PublicURL, "https://") }
@@ -259,6 +263,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		SurveyMessage   *string        `json:"survey_message"` // "" goes back to the default text
 		SurveyRoles     *roleFilterDTO `json:"survey_roles"`
 		GameRoles       *roleFilterDTO `json:"game_roles"`
+		CanvasEnabled   *bool          `json:"canvas_enabled"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -266,7 +271,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	p := usecase.SettingsPatch{
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		GamesEnabled: in.GamesEnabled, KudosChannelID: in.KudosChannelID, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
-		SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(),
+		SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(), CanvasEnabled: in.CanvasEnabled,
 	}
 	if in.ReportFrequency != nil {
 		f := domain.ReportFrequency(*in.ReportFrequency)

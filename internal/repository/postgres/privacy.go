@@ -123,7 +123,17 @@ func (r *PrivacyRepo) memberData(ctx context.Context, m domain.Member) (domain.M
 		JOIN members m ON m.id = p.member_id AND m.guild_id = g.id
 		WHERE g.discord_id = $1 AND m.discord_id = $2
 		ORDER BY p.week`, g, u)
-	md.GameProposals, err = collect(rows, qerr, scanGameProposal)
+	if md.GameProposals, err = collect(rows, qerr, scanGameProposal); err != nil {
+		return md, err
+	}
+	rows, qerr = r.db.Query(ctx, `
+		SELECT `+canvasCols+`
+		FROM canvas_strokes s
+		JOIN guilds g ON g.id = s.guild_id
+		JOIN members m ON m.id = s.member_id AND m.guild_id = g.id
+		WHERE g.discord_id = $1 AND m.discord_id = $2
+		ORDER BY s.id`, g, u)
+	md.CanvasStrokes, err = collect(rows, qerr, scanCanvasStroke)
 	return md, err
 }
 
@@ -151,6 +161,10 @@ func (r *PrivacyRepo) EraseUser(ctx context.Context, userID string) error {
 		`DELETE FROM game_proposals WHERE member_id IN ` + mine,
 		// A question they proposed stays in its round, without their name.
 		`UPDATE game_rounds SET proposer_member_id = NULL WHERE proposer_member_id IN ` + mine,
+		// Their drawings; the canvases they were on change version so open pages drop them.
+		`UPDATE guilds SET canvas_version = canvas_version + 1
+		 WHERE id IN (SELECT guild_id FROM canvas_strokes WHERE member_id IN ` + mine + `)`,
+		`DELETE FROM canvas_strokes WHERE member_id IN ` + mine,
 		`UPDATE members SET active = FALSE, username = '', updated_at = now() WHERE discord_id = $1`,
 	} {
 		if _, err := tx.Exec(ctx, sql, userID); err != nil {
@@ -210,6 +224,16 @@ func (r *PrivacyRepo) GuildData(ctx context.Context, guildID string) (domain.Gui
 		JOIN members m ON m.id = a.member_id AND m.guild_id = g.id
 		WHERE g.discord_id = $1 AND m.active
 		ORDER BY rd.week, a.ref`, guildID)
-	d.Answers, err = collect(rows, qerr, scanRoundAnswer)
+	if d.Answers, err = collect(rows, qerr, scanRoundAnswer); err != nil {
+		return d, err
+	}
+	rows, qerr = r.db.Query(ctx, `
+		SELECT `+canvasCols+`
+		FROM canvas_strokes s
+		JOIN guilds g ON g.id = s.guild_id
+		JOIN members m ON m.id = s.member_id
+		WHERE g.discord_id = $1
+		ORDER BY s.id`, guildID)
+	d.CanvasStrokes, err = collect(rows, qerr, scanCanvasStroke)
 	return d, err
 }

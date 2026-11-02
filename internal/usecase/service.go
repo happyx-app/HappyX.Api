@@ -19,6 +19,7 @@ type Service struct {
 	games      GameRepository
 	access     AccessRepository
 	privacy    PrivacyRepository
+	canvas     CanvasRepository // nil until WithCanvas
 	now        Clock
 }
 
@@ -86,6 +87,8 @@ type SettingsPatch struct {
 	// role. Their roles must exist in the guild.
 	SurveyRoles *domain.RoleFilter
 	GameRoles   *domain.RoleFilter
+	// CanvasEnabled turns the team canvas on or off. Turning it off keeps the drawings.
+	CanvasEnabled *bool
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -126,6 +129,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.SurveyMessage != nil {
 		st.SurveyMessage = strings.TrimSpace(*p.SurveyMessage)
+	}
+	if p.CanvasEnabled != nil {
+		st.CanvasEnabled = *p.CanvasEnabled
 	}
 	for _, f := range []struct {
 		field string

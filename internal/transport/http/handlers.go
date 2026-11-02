@@ -29,6 +29,7 @@ type guildDTO struct {
 	SurveyMessage   string        `json:"survey_message"` // "" means the default text
 	SurveyRoles     roleFilterDTO `json:"survey_roles"`
 	GameRoles       roleFilterDTO `json:"game_roles"`
+	CanvasEnabled   bool          `json:"canvas_enabled"`
 	Active          bool          `json:"active"`
 	CreatedAt       time.Time     `json:"created_at"`
 }
@@ -65,7 +66,7 @@ func toGuildDTO(g domain.Guild) guildDTO {
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM,
 		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled,
 		WorkingDays: g.Settings.WorkingDays.ISO(), SurveyMessage: g.Settings.SurveyMessage,
-		SurveyRoles: toRoleFilterDTO(g.Settings.SurveyRoles), GameRoles: toRoleFilterDTO(g.Settings.GameRoles), Active: g.Active, CreatedAt: g.CreatedAt,
+		SurveyRoles: toRoleFilterDTO(g.Settings.SurveyRoles), GameRoles: toRoleFilterDTO(g.Settings.GameRoles), CanvasEnabled: g.Settings.CanvasEnabled, Active: g.Active, CreatedAt: g.CreatedAt,
 	}
 }
 

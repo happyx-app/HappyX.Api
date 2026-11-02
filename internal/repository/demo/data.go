@@ -92,6 +92,7 @@ func guild(lang string, created time.Time) domain.Guild {
 	s.GamesEnabled = true
 	s.SurveyRoles = domain.RoleFilter{Mode: domain.RolesExcept, RoleIDs: []string{roleExt}}
 	s.GameRoles = domain.RoleFilter{Mode: domain.RolesEveryone}
+	s.CanvasEnabled = true
 	return domain.Guild{
 		DiscordID: GuildID, Name: texts[lang].guildName, AdminDiscordID: people[0].id, Settings: s, Active: true,
 		CreatedAt: created, UpdatedAt: created,

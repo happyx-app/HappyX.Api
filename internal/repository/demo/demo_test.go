@@ -100,6 +100,16 @@ func TestDemoViewer(t *testing.T) {
 	if err != nil || len(a.Grants) == 0 || len(a.Roles) == 0 || len(a.Members) != 12 {
 		t.Fatalf("access: %+v %v", a, err)
 	}
+	// The sample drawings are ones the real API would take.
+	c, err := svc.Canvas(ctx, v, demo.GuildID)
+	if err != nil || !c.Enabled || len(c.Strokes) == 0 {
+		t.Fatalf("canvas: %+v %v", c, err)
+	}
+	for _, st := range c.Strokes {
+		if err := st.Validate(); err != nil {
+			t.Fatalf("demo stroke %d (%s): %v", st.ID, st.DrawingID, err)
+		}
+	}
 }
 
 // Nothing can be written: every write the dashboard could do fails.

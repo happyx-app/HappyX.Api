@@ -108,6 +108,17 @@ replaces it), from the bot's Thursday DM or the web. On Monday one of them is dr
 the round, whatever question the bot sent; with no proposals the bot's question is used. Who
 proposed it stays secret until the results, when it comes out with the authors.
 
+### Team canvas
+
+Off by default (`canvas_enabled`, only changed from the web). When it is on, whoever can open one
+of the server's dashboard pages (its reports, or its game as a player) can draw on their
+background with five pens. Each stroke is stored with its author, a `drawing_id` its drawing's
+strokes share, a colour (`0`-`4`), an anchor (`[x, y]`, a fraction of the screen, so a drawing in
+the margin stays in the margin) and its points in px from the anchor. Drawings stay until someone
+erases them: members erase their own; those with **manage** see who drew what and erase any
+drawing, or the whole canvas. Limits: 500 points a stroke, 60 strokes a minute a person and 3000
+strokes a server (then 409 until something is erased). Turning the canvas off keeps the drawings.
+
 ## Credentials
 
 All secrets come from environment variables; nothing is read from files in the repo.
@@ -172,15 +183,19 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
 | PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `report_dm`, `language`, `games_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| GET | `/web/guilds/{guildID}/canvas` | `{enabled, version, can_moderate, max_strokes, strokes}`: the team canvas (see «Team canvas»), oldest stroke first. Each stroke has `id`, `drawing_id`, `color`, `anchor`, `points` (flat `[x0, y0, x1, y1…]`), `mine`, `created_at` and, for moderators (**manage**), `author` (`discord_user_id`, `username`). Strokes are empty while it is off, except for moderators. Sends an `ETag`: with `If-None-Match` it answers 304 until something changes. 404 for people who can't see the reports and don't play the game |
+| POST | `/web/guilds/{guildID}/canvas/strokes` | `drawing_id` (1-36 letters, digits, `-`, `_`), `color` (`0`-`4`), `anchor` (`[x, y]`, 0 to 1), `points` (2 to 500 points, within 4000 px of the anchor): 201 with `{stroke, version}`. 409 while the canvas is off or full, 429 past 60 a minute. Needs `Content-Type: application/json` |
+| DELETE | `/web/guilds/{guildID}/canvas/drawings/{drawingID}` | erases a drawing: the user's own, or any for moderators. `{version}`; 404 if there is nothing of theirs to erase. Needs `Content-Type: application/json` |
+| DELETE | `/web/guilds/{guildID}/canvas` | erases the whole canvas. `{version}`. Needs **manage** and `Content-Type: application/json` |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `report_dm`, `language`, `games_enabled`, `canvas_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
 | GET | `/web/guilds/{guildID}/roles` | the server's Discord roles (`id`, `name`, `color`, `position`, highest first), for the settings' pickers. Needs **manage** |
 | GET | `/web/guilds/{guildID}/channels` | the server's text and announcement channels (`id`, `name`, `category`, `position`, `can_post`), in Discord's order, for the kudos channel picker. Needs **manage** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |
 | PUT | `/web/guilds/{guildID}/access` | `admin_discord_user_id` and the full `grants` list (at most 50). The admin and granted users must be in the server, roles must exist. Needs **owner** and `Content-Type: application/json` |
-| DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, dispatches); the bot then leaves it. Needs **owner** and `Content-Type: application/json`. 204 |
-| GET | `/web/guilds/{guildID}/export` | downloads the server's data as JSON (`happyx-server-data`): settings, members, survey answers, kudos and «Who's who?» rounds. Needs **owner**, and the same anonymity as the dashboard (see below) |
-| GET | `/web/me/data` | downloads everything HappyX keeps about the logged-in user as JSON (`happyx-personal-data`): per server their membership, answers, kudos given and received, game answers, guesses and proposals, and which servers' reports they receive |
-| DELETE | `/web/me/data` | `confirm_name` (the user's username): erases the user's answers, kudos (given and received) and game activity in every server, and pauses the survey for them everywhere. Their member rows stay, without a username, so the bot doesn't sign them up again. Needs `Content-Type: application/json`. 204 |
+| DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, canvas, dispatches); the bot then leaves it. Needs **owner** and `Content-Type: application/json`. 204 |
+| GET | `/web/guilds/{guildID}/export` | downloads the server's data as JSON (`happyx-server-data`): settings, members, survey answers, kudos, «Who's who?» rounds and the team canvas with who drew each stroke. Needs **owner**, and the same anonymity as the dashboard (see below) |
+| GET | `/web/me/data` | downloads everything HappyX keeps about the logged-in user as JSON (`happyx-personal-data`): per server their membership, answers, kudos given and received, game answers, guesses and proposals, drawings on the team canvas, and which servers' reports they receive |
+| DELETE | `/web/me/data` | `confirm_name` (the user's username): erases the user's answers, kudos (given and received), game activity and drawings in every server, and pauses the survey for them everywhere. Their member rows stay, without a username, so the bot doesn't sign them up again. Needs `Content-Type: application/json`. 204 |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
 the server: they are the author, so anonymity doesn't hide anything from them. The streak counts
@@ -215,6 +230,7 @@ as the demo's main admin:
 | GET | `/web/demo/{lang}/guilds/{guildID}/channels` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/access` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/game` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/canvas` |
 
 The demo server is not in the database. It lives in memory (`internal/repository/demo`) behind
 its own `usecase.Service`, so the demo runs the same report code as real servers but can only
