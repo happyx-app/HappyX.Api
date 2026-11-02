@@ -18,9 +18,9 @@ func (s *Service) MyData(ctx context.Context, v domain.Viewer) (domain.UserData,
 	return s.privacy.UserData(ctx, v.DiscordID)
 }
 
-// EraseMyData deletes the viewer's answers, kudos and game activity in every guild, and pauses
-// the survey for them everywhere. confirmName must be the viewer's username, as they typed it
-// to confirm. Guild settings that name them, such as who receives the reports, are left alone.
+// EraseMyData deletes the viewer's answers, kudos, game activity and drawings in every guild,
+// and pauses the survey for them everywhere. confirmName must be the viewer's username, as they
+// typed it to confirm. Guild settings that name them, such as who receives the reports, are left alone.
 func (s *Service) EraseMyData(ctx context.Context, v domain.Viewer, confirmName string) error {
 	if v.DiscordID == "" {
 		return domain.ErrNotFound

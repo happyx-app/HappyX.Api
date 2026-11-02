@@ -85,6 +85,7 @@ type myServerDataDTO struct {
 	GameAnswers   []myGameAnswerDTO   `json:"game_answers"`
 	GameGuesses   []myGameGuessDTO    `json:"game_guesses"`
 	GameProposals []myGameProposalDTO `json:"game_proposals"`
+	CanvasStrokes []canvasStrokeDTO   `json:"canvas_strokes"`
 }
 
 // webMyData downloads everything HappyX keeps about the viewer.
@@ -115,6 +116,7 @@ func (s *Server) webMyData(w http.ResponseWriter, r *http.Request, v domain.View
 			GameAnswers:     []myGameAnswerDTO{},
 			GameGuesses:     []myGameGuessDTO{},
 			GameProposals:   []myGameProposalDTO{},
+			CanvasStrokes:   []canvasStrokeDTO{},
 		}
 		for _, e := range md.Moods {
 			sd.Moods = append(sd.Moods, myExportMoodDTO{e.Day.Format(dateLayout), int(e.Mood), e.Message, e.Anonymous, e.CreatedAt, e.UpdatedAt})
@@ -127,6 +129,9 @@ func (s *Server) webMyData(w http.ResponseWriter, r *http.Request, v domain.View
 		}
 		for _, p := range md.GameProposals {
 			sd.GameProposals = append(sd.GameProposals, myGameProposalDTO{p.Week.Format(dateLayout), p.Text})
+		}
+		for _, st := range md.CanvasStrokes {
+			sd.CanvasStrokes = append(sd.CanvasStrokes, toCanvasStrokeDTO(st, v.DiscordID, false))
 		}
 		out.Servers = append(out.Servers, sd)
 	}
@@ -167,6 +172,7 @@ type serverExportDTO struct {
 	SurveyMessage   string        `json:"survey_message,omitempty"`
 	SurveyRoles     roleFilterDTO `json:"survey_roles"`
 	GameRoles       roleFilterDTO `json:"game_roles"`
+	CanvasEnabled   bool          `json:"canvas_enabled"`
 	AdminDiscordID  string        `json:"admin_discord_user_id"`
 	CreatedAt       time.Time     `json:"created_at"`
 }
@@ -223,7 +229,7 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 			SurveyHour: g.Settings.SurveyHour, WorkingDays: g.Settings.WorkingDays.ISO(),
 			ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM, GamesEnabled: g.Settings.GamesEnabled,
 			SurveyMessage: g.Settings.SurveyMessage, SurveyRoles: toRoleFilterDTO(g.Settings.SurveyRoles),
-			GameRoles: toRoleFilterDTO(g.Settings.GameRoles), AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
+			GameRoles: toRoleFilterDTO(g.Settings.GameRoles), CanvasEnabled: g.Settings.CanvasEnabled, AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
 		},
 		Members: []exportMemberDTO{}, Moods: []exportMoodDTO{}, Kudos: toExportKudos(x.Kudos, true, true), Games: []exportRoundDTO{},
 	}

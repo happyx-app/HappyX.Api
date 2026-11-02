@@ -27,6 +27,7 @@ type MemberData struct {
 	GameAnswers   []RoundAnswer
 	GameGuesses   []MadeGuess
 	GameProposals []GameProposal
+	CanvasStrokes []CanvasStroke
 }
 
 // RoundAnswer is an answer to a «Who's who?» round, with the round's question.

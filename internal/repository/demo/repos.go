@@ -23,7 +23,7 @@ func (s *Store) Repositories() (usecase.GuildRepository, usecase.MemberRepositor
 // NewService is a usecase.Service that only knows the demo server.
 func (s *Store) NewService() *usecase.Service {
 	g, m, mo, d, k, ga, a, p := s.Repositories()
-	return usecase.NewService(g, m, mo, d, k, ga, a, p, s.now)
+	return usecase.NewService(g, m, mo, d, k, ga, a, p, s.now).WithCanvas(canvas{s})
 }
 
 func inRange(day, from, to time.Time) bool { return !day.Before(from) && !day.After(to) }

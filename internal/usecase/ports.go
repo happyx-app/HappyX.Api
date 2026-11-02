@@ -134,12 +134,33 @@ type PrivacyRepository interface {
 	// UserData returns everything stored about userID, in every guild, including guilds the bot
 	// left that are still kept.
 	UserData(ctx context.Context, userID string) (domain.UserData, error)
-	// EraseUser deletes userID's answers, kudos given and received, and everything they did in
-	// «Who's who?», in every guild. Their member rows stay, paused and without a username, so
-	// the bot doesn't send them the survey again; Discord IDs are kept only for that.
+	// EraseUser deletes userID's answers, kudos given and received, everything they did in
+	// «Who's who?» and their drawings on the team canvas, in every guild. Their member rows stay,
+	// paused and without a username, so the bot doesn't send them the survey again; Discord IDs
+	// are kept only for that.
 	EraseUser(ctx context.Context, userID string) error
 	// GuildData returns everything stored about the guild.
 	GuildData(ctx context.Context, guildID string) (domain.GuildData, error)
+}
+
+type CanvasRepository interface {
+	// List returns the guild's canvas, oldest stroke first, with the authors' usernames, and the
+	// canvas version.
+	List(ctx context.Context, guildID string) ([]domain.CanvasStroke, int64, error)
+	// Version returns the guild's canvas version, which goes up on every change.
+	Version(ctx context.Context, guildID string) (int64, error)
+	// Count returns how many strokes the guild's canvas holds.
+	Count(ctx context.Context, guildID string) (int, error)
+	// CountByAuthorSince returns how many strokes userID added to the guild's canvas since then.
+	CountByAuthorSince(ctx context.Context, guildID, userID string, since time.Time) (int, error)
+	// Add stores s, drawn by s.AuthorDiscordID, and returns it with the new version.
+	// domain.ErrNotFound when the author isn't a member of the guild.
+	Add(ctx context.Context, s domain.CanvasStroke) (domain.CanvasStroke, int64, error)
+	// DeleteDrawing deletes the drawing's strokes, only authorID's when it is set, and returns
+	// how many it deleted and the new version.
+	DeleteDrawing(ctx context.Context, guildID, drawingID, authorID string) (int, int64, error)
+	// Clear deletes every stroke in the guild's canvas and returns the new version.
+	Clear(ctx context.Context, guildID string) (int64, error)
 }
 
 // Clock lets tests control "today".

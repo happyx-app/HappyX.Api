@@ -84,6 +84,9 @@ type GuildSettings struct {
 	SurveyRoles RoleFilter
 	// GameRoles narrows who plays the «Who's who?» game by Discord role. Everyone by default.
 	GameRoles RoleFilter
+	// CanvasEnabled turns on the team canvas on the dashboard. Off by default; only the web
+	// changes it.
+	CanvasEnabled bool
 }
 
 // Weekdays is a set of days of the week, one bit per time.Weekday (bit 0 is Sunday).
