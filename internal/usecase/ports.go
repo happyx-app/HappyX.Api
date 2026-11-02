@@ -149,13 +149,12 @@ type CanvasRepository interface {
 	List(ctx context.Context, guildID string) ([]domain.CanvasStroke, int64, error)
 	// Version returns the guild's canvas version, which goes up on every change.
 	Version(ctx context.Context, guildID string) (int64, error)
-	// Count returns how many strokes the guild's canvas holds.
-	Count(ctx context.Context, guildID string) (int, error)
-	// CountByAuthorSince returns how many strokes userID added to the guild's canvas since then.
-	CountByAuthorSince(ctx context.Context, guildID, userID string, since time.Time) (int, error)
-	// Add stores s, drawn by s.AuthorDiscordID, and returns it with the new version.
+	// Add stores s, drawn by s.AuthorDiscordID, and returns it with the new version. It checks the
+	// limits in the same write, so requests at the same time can't get past them:
+	// domain.ErrTooMany when the author added domain.MaxCanvasStrokesPerMinute strokes since
+	// `since`, domain.ErrCanvasFull when the canvas holds domain.MaxCanvasStrokes, and
 	// domain.ErrNotFound when the author isn't a member of the guild.
-	Add(ctx context.Context, s domain.CanvasStroke) (domain.CanvasStroke, int64, error)
+	Add(ctx context.Context, s domain.CanvasStroke, since time.Time) (domain.CanvasStroke, int64, error)
 	// DeleteDrawing deletes the drawing's strokes, only authorID's when it is set, and returns
 	// how many it deleted and the new version.
 	DeleteDrawing(ctx context.Context, guildID, drawingID, authorID string) (int, int64, error)

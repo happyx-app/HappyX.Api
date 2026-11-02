@@ -169,6 +169,12 @@ func TestWebCanvas(t *testing.T) {
 		t.Fatalf("too many strokes: %d", code)
 	}
 
+	// The server export has every drawing with its author.
+	_, server := download(t, admin, srv.URL+"/web/guilds/"+guildA+"/export")
+	if cs := list(server["canvas_strokes"]); len(cs) != 60 || cs[0]["author"].(map[string]any)["username"] != "mia" {
+		t.Fatalf("server export: %v", server["canvas_strokes"])
+	}
+
 	// The personal data export has the drawings, and erasing the data erases them.
 	_, mine := download(t, m, srv.URL+"/web/me/data")
 	if s := list(mine["servers"])[0]; len(s["canvas_strokes"].([]any)) != 60 {
@@ -188,8 +194,12 @@ func TestWebCanvas(t *testing.T) {
 	if code, _ := patchSettings(t, srv, admin, guildA, jsonCT, `{"canvas_enabled":false}`); code != 200 {
 		t.Fatalf("turn off: %d", code)
 	}
-	if _, c := get(t, m2, canvasURL); c["enabled"] != false || len(c["strokes"].([]any)) != 0 {
+	res, c = get(t, m2, canvasURL)
+	if c["enabled"] != false || len(c["strokes"].([]any)) != 0 {
 		t.Fatalf("member, canvas off: %v", c)
+	}
+	if etag = res.Header.Get("ETag"); cond(m2) != 304 {
+		t.Fatalf("unchanged canvas while off: %q", etag)
 	}
 	if _, c := get(t, admin, canvasURL); len(c["strokes"].([]any)) != 1 {
 		t.Fatalf("moderator, canvas off: %v", c)

@@ -91,8 +91,8 @@ func demoSketches() []sketch {
 		cup = append(cup, curve(14, func(t float64) [2]float64 { return [2]float64{x + 6*math.Sin(t*2*math.Pi), 500 - 50*t} }))
 	}
 	face := [][][2]float64{
-		circle(680, 1000, 44, 44, 0, 1.05), circle(665, 988, 3, 3, 0, 1.05), circle(697, 988, 3, 3, 0, 1.05),
-		curve(12, func(t float64) [2]float64 { return [2]float64{660 + 40*t, 1012 + 12*math.Sin(math.Pi*t)} }),
+		circle(680, 800, 44, 44, 0, 1.05), circle(665, 788, 3, 3, 0, 1.05), circle(697, 788, 3, 3, 0, 1.05),
+		curve(12, func(t float64) [2]float64 { return [2]float64{660 + 40*t, 812 + 12*math.Sin(math.Pi*t)} }),
 	}
 	return []sketch{
 		{"pau", yellow, 6 * 24 * h, sun},
@@ -168,15 +168,7 @@ func (canvas) Version(_ context.Context, guildID string) (int64, error) {
 	return 1, nil
 }
 
-func (c canvas) Count(ctx context.Context, guildID string) (int, error) {
-	ss, _, err := c.List(ctx, guildID)
-	return len(ss), err
-}
-
-func (canvas) CountByAuthorSince(context.Context, string, string, time.Time) (int, error) {
-	return 0, nil
-}
-func (canvas) Add(context.Context, domain.CanvasStroke) (domain.CanvasStroke, int64, error) {
+func (canvas) Add(context.Context, domain.CanvasStroke, time.Time) (domain.CanvasStroke, int64, error) {
 	return domain.CanvasStroke{}, 0, ErrReadOnly
 }
 func (canvas) DeleteDrawing(context.Context, string, string, string) (int, int64, error) {

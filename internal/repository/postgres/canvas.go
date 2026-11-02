@@ -55,24 +55,6 @@ func (r *CanvasRepo) Version(ctx context.Context, guildID string) (int64, error)
 	return v, notFound(err)
 }
 
-func (r *CanvasRepo) Count(ctx context.Context, guildID string) (int, error) {
-	var n int
-	err := r.db.QueryRow(ctx, `
-		SELECT count(*) FROM canvas_strokes s JOIN guilds g ON g.id = s.guild_id
-		WHERE g.discord_id = $1`, guildID).Scan(&n)
-	return n, err
-}
-
-func (r *CanvasRepo) CountByAuthorSince(ctx context.Context, guildID, userID string, since time.Time) (int, error) {
-	var n int
-	err := r.db.QueryRow(ctx, `
-		SELECT count(*) FROM canvas_strokes s
-		JOIN guilds g ON g.id = s.guild_id
-		JOIN members m ON m.id = s.member_id
-		WHERE g.discord_id = $1 AND m.discord_id = $2 AND s.created_at >= $3`, guildID, userID, since).Scan(&n)
-	return n, err
-}
-
 // bump raises the guild's canvas version in tx and returns the new one.
 func bumpCanvas(ctx context.Context, tx pgx.Tx, guildID string) (int64, error) {
 	var v int64
@@ -80,12 +62,33 @@ func bumpCanvas(ctx context.Context, tx pgx.Tx, guildID string) (int64, error) {
 	return v, notFound(err)
 }
 
-func (r *CanvasRepo) Add(ctx context.Context, s domain.CanvasStroke) (domain.CanvasStroke, int64, error) {
+func (r *CanvasRepo) Add(ctx context.Context, s domain.CanvasStroke, since time.Time) (domain.CanvasStroke, int64, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return domain.CanvasStroke{}, 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// Raising the version first locks the guild's row, so strokes for one guild are added one at
+	// a time and the counts below can't be raced past.
+	v, err := bumpCanvas(ctx, tx, s.GuildDiscordID)
+	if err != nil {
+		return domain.CanvasStroke{}, 0, err
+	}
+	var total, recent int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*), count(*) FILTER (WHERE m.discord_id = $2 AND s.created_at >= $3)
+		FROM canvas_strokes s
+		JOIN guilds g ON g.id = s.guild_id
+		JOIN members m ON m.id = s.member_id
+		WHERE g.discord_id = $1`, s.GuildDiscordID, s.AuthorDiscordID, since).Scan(&total, &recent); err != nil {
+		return domain.CanvasStroke{}, 0, err
+	}
+	switch {
+	case recent >= domain.MaxCanvasStrokesPerMinute:
+		return domain.CanvasStroke{}, 0, domain.ErrTooMany
+	case total >= domain.MaxCanvasStrokes:
+		return domain.CanvasStroke{}, 0, domain.ErrCanvasFull
+	}
 	out, err := scanCanvasStroke(tx.QueryRow(ctx, `
 		WITH s AS (
 		         INSERT INTO canvas_strokes (guild_id, member_id, drawing_id, color, anchor_x, anchor_y, points)
@@ -97,10 +100,6 @@ func (r *CanvasRepo) Add(ctx context.Context, s domain.CanvasStroke) (domain.Can
 		SELECT `+canvasCols+`
 		FROM s JOIN guilds g ON g.id = s.guild_id JOIN members m ON m.id = s.member_id`,
 		s.GuildDiscordID, s.AuthorDiscordID, s.DrawingID, int16(s.Color), float32(s.AnchorX), float32(s.AnchorY), domain.EncodeCanvasPoints(s.Points)))
-	if err != nil {
-		return domain.CanvasStroke{}, 0, err
-	}
-	v, err := bumpCanvas(ctx, tx, s.GuildDiscordID)
 	if err != nil {
 		return domain.CanvasStroke{}, 0, err
 	}
@@ -123,8 +122,7 @@ func (r *CanvasRepo) DeleteDrawing(ctx context.Context, guildID, drawingID, auth
 	}
 	n := int(tag.RowsAffected())
 	if n == 0 {
-		v, err := r.Version(ctx, guildID)
-		return 0, v, err
+		return 0, 0, nil
 	}
 	v, err := bumpCanvas(ctx, tx, guildID)
 	if err != nil {

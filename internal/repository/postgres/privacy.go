@@ -224,6 +224,16 @@ func (r *PrivacyRepo) GuildData(ctx context.Context, guildID string) (domain.Gui
 		JOIN members m ON m.id = a.member_id AND m.guild_id = g.id
 		WHERE g.discord_id = $1 AND m.active
 		ORDER BY rd.week, a.ref`, guildID)
-	d.Answers, err = collect(rows, qerr, scanRoundAnswer)
+	if d.Answers, err = collect(rows, qerr, scanRoundAnswer); err != nil {
+		return d, err
+	}
+	rows, qerr = r.db.Query(ctx, `
+		SELECT `+canvasCols+`
+		FROM canvas_strokes s
+		JOIN guilds g ON g.id = s.guild_id
+		JOIN members m ON m.id = s.member_id
+		WHERE g.discord_id = $1
+		ORDER BY s.id`, guildID)
+	d.CanvasStrokes, err = collect(rows, qerr, scanCanvasStroke)
 	return d, err
 }

@@ -65,7 +65,9 @@ func (s *Service) Canvas(ctx context.Context, v domain.Viewer, guildID string) (
 	}
 	out := CanvasView{Enabled: g.Settings.CanvasEnabled, CanModerate: moderator, Strokes: []domain.CanvasStroke{}}
 	if !out.Enabled && !moderator {
-		return out, nil
+		// The version still goes in, so the page's ETag matches CanvasVersion and it gets 304s.
+		out.Version, err = s.canvas.Version(ctx, g.DiscordID)
+		return out, err
 	}
 	if out.Strokes, out.Version, err = s.canvas.List(ctx, g.DiscordID); err != nil {
 		return CanvasView{}, err
@@ -99,21 +101,7 @@ func (s *Service) AddCanvasStroke(ctx context.Context, v domain.Viewer, guildID 
 	if err := st.Validate(); err != nil {
 		return domain.CanvasStroke{}, 0, err
 	}
-	recent, err := s.canvas.CountByAuthorSince(ctx, g.DiscordID, v.DiscordID, s.now().Add(-time.Minute))
-	if err != nil {
-		return domain.CanvasStroke{}, 0, err
-	}
-	if recent >= domain.MaxCanvasStrokesPerMinute {
-		return domain.CanvasStroke{}, 0, domain.ErrTooMany
-	}
-	n, err := s.canvas.Count(ctx, g.DiscordID)
-	if err != nil {
-		return domain.CanvasStroke{}, 0, err
-	}
-	if n >= domain.MaxCanvasStrokes {
-		return domain.CanvasStroke{}, 0, domain.ErrCanvasFull
-	}
-	out, version, err := s.canvas.Add(ctx, st)
+	out, version, err := s.canvas.Add(ctx, st, s.now().Add(-time.Minute))
 	if errors.Is(err, domain.ErrNotFound) {
 		// Someone who sees the reports without being in the server (an owner the bot never
 		// synced, say) has no member row to sign the stroke with.

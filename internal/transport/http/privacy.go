@@ -221,6 +221,7 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 		Moods      []exportMoodDTO   `json:"moods"`
 		Kudos      []exportKudosDTO  `json:"kudos"`
 		Games      []exportRoundDTO  `json:"games"`
+		Canvas     []canvasStrokeDTO `json:"canvas_strokes"`
 	}{
 		Format: "happyx-server-data", Version: exportVersion, ExportedAt: s.web.Now().UTC().Truncate(time.Second),
 		Server: serverExportDTO{
@@ -232,6 +233,10 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 			GameRoles: toRoleFilterDTO(g.Settings.GameRoles), CanvasEnabled: g.Settings.CanvasEnabled, AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
 		},
 		Members: []exportMemberDTO{}, Moods: []exportMoodDTO{}, Kudos: toExportKudos(x.Kudos, true, true), Games: []exportRoundDTO{},
+		Canvas: []canvasStrokeDTO{},
+	}
+	for _, st := range x.CanvasStrokes {
+		out.Canvas = append(out.Canvas, toCanvasStrokeDTO(st, v.DiscordID, true))
 	}
 	for _, m := range x.Members {
 		out.Members = append(out.Members, exportMemberDTO{m.DiscordID, m.Username, m.Active, m.CreatedAt})
