@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -37,7 +38,12 @@ type Web struct {
 const (
 	sessionCookie = "happyx_session"
 	stateCookie   = "happyx_oauth_state"
+	nextCookie    = "happyx_oauth_next"
 )
+
+// nextPath matches the dashboard routes a login may return to, such as /g/123 or /game/123.
+// Only letters, digits, "-", "_" and "/" are allowed, so the value can't leave the site.
+var nextPath = regexp.MustCompile(`^/[A-Za-z0-9_-][A-Za-z0-9/_-]{0,199}$`)
 
 // WithWeb enables the dashboard routes.
 func (s *Server) WithWeb(w Web) *Server {
@@ -104,6 +110,11 @@ func (s *Server) webLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	state := hex.EncodeToString(b)
 	s.setCookie(w, stateCookie, state, 10*time.Minute)
+	if next := r.URL.Query().Get("next"); nextPath.MatchString(next) {
+		s.setCookie(w, nextCookie, next, 10*time.Minute)
+	} else {
+		s.clearCookie(w, nextCookie)
+	}
 	http.Redirect(w, r, s.web.Identity.AuthURL(state), http.StatusFound)
 }
 
@@ -116,6 +127,11 @@ func (s *Server) webCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	c, err := r.Cookie(stateCookie)
 	s.clearCookie(w, stateCookie)
+	home := s.web.PublicURL + "/"
+	if n, err := r.Cookie(nextCookie); err == nil && nextPath.MatchString(n.Value) {
+		home += "#" + n.Value
+	}
+	s.clearCookie(w, nextCookie)
 	if err != nil || q.Get("state") == "" || subtle.ConstantTimeCompare([]byte(c.Value), []byte(q.Get("state"))) != 1 {
 		http.Redirect(w, r, s.web.PublicURL+"/?login=failed", http.StatusFound)
 		return
@@ -131,7 +147,7 @@ func (s *Server) webCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setCookie(w, sessionCookie, signSession(s.web.SessionKey, v, s.web.Now().Add(s.web.SessionTTL)), s.web.SessionTTL)
-	http.Redirect(w, r, s.web.PublicURL+"/", http.StatusFound)
+	http.Redirect(w, r, home, http.StatusFound)
 }
 
 func (s *Server) webLogout(w http.ResponseWriter, _ *http.Request) {

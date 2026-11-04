@@ -121,6 +121,23 @@ func TestWebDashboard(t *testing.T) {
 	if res, _ := get(t, anon, srv.URL+"/web/me"); res.StatusCode != 401 {
 		t.Fatal("forged state logged the user in")
 	}
+	// After logging in, the user goes back to the dashboard page they asked for, never off the site.
+	for next, want := range map[string]string{
+		"/g/" + guildA:      "http://happyx.test/#/g/" + guildA,
+		"/game/" + guildA:   "http://happyx.test/#/game/" + guildA,
+		"//evil.test":       "http://happyx.test/",
+		"https://evil.test": "http://happyx.test/",
+		"/g/1?x=<script>":   "http://happyx.test/",
+		"":                  "http://happyx.test/",
+	} {
+		c := newWebClient(t)
+		res, _ := get(t, c, srv.URL+"/web/auth/login?next="+url.QueryEscape(next))
+		loc, _ := url.Parse(res.Header.Get("Location"))
+		res, _ = get(t, c, srv.URL+"/web/auth/callback?code=adminA&state="+loc.Query().Get("state"))
+		if got := res.Header.Get("Location"); got != want {
+			t.Errorf("next %q: went to %s, want %s", next, got, want)
+		}
+	}
 	// Adding the bot needs no login.
 	if res, _ := get(t, anon, srv.URL+"/web/auth/invite"); res.StatusCode != http.StatusFound || res.Header.Get("Location") != "https://discord.test/invite" {
 		t.Fatalf("invite: %d %s", res.StatusCode, res.Header.Get("Location"))
