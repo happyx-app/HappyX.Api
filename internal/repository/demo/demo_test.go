@@ -112,10 +112,29 @@ func TestDemoViewer(t *testing.T) {
 	}
 }
 
+// Monday to Wednesday, when real servers are still answering, the demo shows the guessing phase,
+// so a visitor always gets to guess, with last week's results below.
+func TestDemoGameIsAlwaysGuessing(t *testing.T) {
+	ctx := context.Background()
+	for _, now := range []string{"2026-11-02T10:00:00Z", "2026-11-03T15:00:00Z", "2026-11-04T10:00:00Z", "2026-11-05T10:00:00Z", "2026-11-08T20:00:00Z"} {
+		svc := demo.NewStore("es", at(now)).NewService()
+		b, err := svc.GameBoard(ctx, demo.Viewer(), demo.GuildID)
+		if err != nil || b.Current == nil || b.Current.Phase != domain.GameGuessing || len(b.Current.Answers) < 3 {
+			t.Fatalf("%s: current %+v %v", now, b.Current, err)
+		}
+		if b.Previous == nil || b.Previous.Phase != domain.GameFinished || len(b.Previous.Ranking) == 0 {
+			t.Fatalf("%s: previous %+v", now, b.Previous)
+		}
+		if !b.Proposal.Open {
+			t.Fatalf("%s: proposals closed", now)
+		}
+	}
+}
+
 // Nothing can be written: every write the dashboard could do fails.
 func TestDemoIsReadOnly(t *testing.T) {
 	ctx := context.Background()
-	svc := demo.NewStore("es", at("2026-10-27T10:00:00Z")).NewService() // a Tuesday: answering is open
+	svc := demo.NewStore("es", at("2026-10-27T10:00:00Z")).NewService()
 	v := demo.Viewer()
 	anon := false
 	if _, err := svc.UpdateGuildSettings(ctx, demo.GuildID, usecase.SettingsPatch{Anonymous: &anon}); err == nil {

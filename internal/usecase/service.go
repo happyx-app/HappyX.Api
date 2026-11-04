@@ -21,6 +21,7 @@ type Service struct {
 	privacy    PrivacyRepository
 	canvas     CanvasRepository // nil until WithCanvas
 	now        Clock
+	gameDay    func(today time.Time) time.Time // nil until WithGameDay
 }
 
 func NewService(g GuildRepository, m MemberRepository, mo MoodRepository, d DispatchRepository, k KudosRepository, ga GameRepository, a AccessRepository, p PrivacyRepository, now Clock) *Service {
@@ -661,6 +662,21 @@ func (s *Service) LastPeriod(g domain.Guild) (from, to time.Time) {
 	offset := (int(today.Weekday()) + 6) % 7 // days since Monday
 	thisMonday := today.AddDate(0, 0, -offset)
 	return thisMonday.AddDate(0, 0, -7), thisMonday.AddDate(0, 0, -1)
+}
+
+// WithGameDay makes «Who's who?» run on another day than today. The public demo uses it to always
+// show the guessing phase.
+func (s *Service) WithGameDay(f func(today time.Time) time.Time) *Service {
+	s.gameDay = f
+	return s
+}
+
+// gameToday is the day the game is on for g: today, unless WithGameDay says otherwise.
+func (s *Service) gameToday(g domain.Guild) time.Time {
+	if s.gameDay != nil {
+		return s.gameDay(s.today(g))
+	}
+	return s.today(g)
 }
 
 func (s *Service) today(g domain.Guild) time.Time {
