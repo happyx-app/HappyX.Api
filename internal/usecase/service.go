@@ -454,6 +454,18 @@ func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain
 	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period), domain.MaxDispatchAttempts)
 }
 
+// DispatchSent reports whether the period was already claimed for sending (and not given back),
+// so the bot can tell an admin who restarts the survey whether today's already went out.
+func (s *Service) DispatchSent(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
+	if !kind.Valid() {
+		return false, domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\" or \"game_guess\""}
+	}
+	if _, err := s.activeGuild(ctx, guildID); err != nil {
+		return false, err
+	}
+	return s.dispatches.Held(ctx, guildID, kind, domain.TruncateDay(period))
+}
+
 // ReleaseDispatch gives back a claim whose send reached nobody, so the bot can try it again.
 func (s *Service) ReleaseDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error {
 	if !kind.Valid() {

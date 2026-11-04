@@ -214,6 +214,9 @@ func (r dispatches) ListFinished(_ context.Context, guildID string, kind domain.
 func (dispatches) Claim(context.Context, string, domain.DispatchKind, time.Time, int) (bool, error) {
 	return false, ErrReadOnly
 }
+func (dispatches) Held(context.Context, string, domain.DispatchKind, time.Time) (bool, error) {
+	return false, nil
+}
 func (dispatches) Release(context.Context, string, domain.DispatchKind, time.Time) error {
 	return ErrReadOnly
 }

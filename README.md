@@ -298,6 +298,7 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | PUT | `/v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}` | `answer` (1-200) | replaces an earlier answer. 403 for paused members, 409 once answering is over |
 | PUT | `/v1/guilds/{guildID}/game/proposals/{userID}` | `question` (1-200) | proposes next week's question, replacing an earlier one; returns its `week`. 403 for paused members, 409 Monday to Wednesday |
 | POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`/`game`/`game_guess`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent (or reached nobody 3 times). Makes scheduled sends exactly-once across restarts |
+| GET | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | | whether the period was already claimed for sending: 200 if so, 404 if not (never claimed, or given back). The bot uses it to tell an admin who restarts the survey whether today's already went out |
 | PUT | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | `recipients`, `failed` (optional, default 0) | after a claimed send: how many people it went to and how many DMs failed (usually DMs closed). 204; 404 if it wasn't claimed. Only counts, for the admin dashboard |
 | DELETE | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | | gives back a claim whose send reached nobody (the API or Discord failed, or every DM failed), so the next claim for that period can try again, up to 3 tries in all. 204; 404 if it isn't claimed or is already given back |
 

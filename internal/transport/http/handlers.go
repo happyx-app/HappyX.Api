@@ -585,6 +585,25 @@ func (s *Server) claimDispatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"kind": in.Kind, "period": in.Period})
 }
 
+// getDispatch answers 200 when the period was already claimed for sending, and 404 when not.
+func (s *Server) getDispatch(w http.ResponseWriter, r *http.Request) {
+	period, err := time.Parse(dateLayout, r.PathValue("period"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "period must be YYYY-MM-DD")
+		return
+	}
+	sent, err := s.svc.DispatchSent(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if !sent {
+		writeError(w, http.StatusNotFound, "not dispatched")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"kind": r.PathValue("kind"), "period": r.PathValue("period")})
+}
+
 // finishDispatch records how many people a claimed send went to and how many DMs failed.
 func (s *Server) finishDispatch(w http.ResponseWriter, r *http.Request) {
 	var in struct {

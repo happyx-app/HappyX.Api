@@ -826,6 +826,15 @@ func (r *DispatchRepo) ListFinished(ctx context.Context, guildID string, kind do
 	})
 }
 
+func (r *DispatchRepo) Held(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
+	var held bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM dispatches d JOIN guilds g ON g.id = d.guild_id
+		WHERE g.discord_id = $1 AND d.kind = $2 AND d.period = $3 AND d.released_at IS NULL)`,
+		guildID, string(kind), period).Scan(&held)
+	return held, err
+}
+
 func (r *DispatchRepo) Release(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE dispatches d SET released_at = now()
