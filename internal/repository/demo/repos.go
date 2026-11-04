@@ -23,7 +23,16 @@ func (s *Store) Repositories() (usecase.GuildRepository, usecase.MemberRepositor
 // NewService is a usecase.Service that only knows the demo server.
 func (s *Store) NewService() *usecase.Service {
 	g, m, mo, d, k, ga, a, p := s.Repositories()
-	return usecase.NewService(g, m, mo, d, k, ga, a, p, s.now).WithCanvas(canvas{s})
+	return usecase.NewService(g, m, mo, d, k, ga, a, p, s.now).WithCanvas(canvas{s}).WithGameDay(GameDay)
+}
+
+// GameDay is the day the demo's «Who's who?» is on. Monday to Wednesday it is that week's
+// Thursday, so a visitor always gets to guess, with last week's results below.
+func GameDay(today time.Time) time.Time {
+	if thursday := domain.WeekStart(today).AddDate(0, 0, 3); today.Before(thursday) {
+		return thursday
+	}
+	return today
 }
 
 func inRange(day, from, to time.Time) bool { return !day.Before(from) && !day.After(to) }

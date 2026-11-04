@@ -263,7 +263,8 @@ func (d *data) addDay(day time.Time) {
 
 // addGame fills «Who's who?» for this week and the three before, and next week's proposals.
 func (d *data) addGame() {
-	week := domain.WeekStart(d.today)
+	today := GameDay(d.today)
+	week := domain.WeekStart(today)
 	for n := 0; n <= 3; n++ {
 		w := week.AddDate(0, 0, -7*n)
 		key := w.Format("2006-01-02")
@@ -273,7 +274,7 @@ func (d *data) addGame() {
 			r.Proposed, r.ProposerDiscordID, r.ProposerUsername = true, people[6].id, people[6].name
 		}
 		d.rounds[w] = r
-		answeringOver := n > 0 || r.Phase(d.today) != domain.GameAnswering
+		answeringOver := n > 0 || r.Phase(today) != domain.GameAnswering
 		var players []person
 		for i, p := range people {
 			if p.optedOut {
@@ -320,7 +321,7 @@ func (d *data) addGame() {
 			}
 		}
 	}
-	if domain.ProposalsOpen(d.today) {
+	if domain.ProposalsOpen(today) {
 		next := week.AddDate(0, 0, 7)
 		for i, p := range []person{people[3], people[8], people[4]} {
 			d.proposals[next] = append(d.proposals[next], domain.GameProposal{

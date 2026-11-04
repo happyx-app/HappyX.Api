@@ -37,7 +37,7 @@ func (s *Service) StartGameRound(ctx context.Context, guildID string, week time.
 	if err := r.Validate(); err != nil {
 		return domain.GameRound{}, err
 	}
-	today := s.today(g)
+	today := s.gameToday(g)
 	if r.Week.After(today) || r.Phase(today) != domain.GameAnswering {
 		return domain.GameRound{}, domain.ErrClosed
 	}
@@ -71,7 +71,7 @@ func (s *Service) ProposeQuestion(ctx context.Context, in ProposeQuestionInput) 
 	if err := s.player(ctx, g, in.UserID); err != nil {
 		return domain.GameProposal{}, err
 	}
-	today := s.today(g)
+	today := s.gameToday(g)
 	if !domain.ProposalsOpen(today) {
 		return domain.GameProposal{}, domain.ErrClosed
 	}
@@ -105,7 +105,7 @@ func (s *Service) GameRound(ctx context.Context, guildID string, week time.Time)
 	if err != nil {
 		return GameRoundStatus{}, err
 	}
-	return GameRoundStatus{Round: r, Phase: r.Phase(s.today(g)), Answers: len(answers)}, nil
+	return GameRoundStatus{Round: r, Phase: r.Phase(s.gameToday(g)), Answers: len(answers)}, nil
 }
 
 type AnswerGameInput struct {
@@ -126,7 +126,7 @@ func (s *Service) AnswerGame(ctx context.Context, in AnswerGameInput) (domain.Ga
 	if err := s.player(ctx, g, in.UserID); err != nil {
 		return domain.GameAnswer{}, err
 	}
-	today := s.today(g)
+	today := s.gameToday(g)
 	week := domain.TruncateDay(in.Week)
 	if week.IsZero() {
 		week = domain.WeekStart(today)
@@ -220,7 +220,7 @@ func (s *Service) GameBoard(ctx context.Context, v domain.Viewer, guildID string
 	if err != nil {
 		return GameBoard{}, err
 	}
-	today := s.today(g)
+	today := s.gameToday(g)
 	week := domain.WeekStart(today)
 	b := GameBoard{Guild: g}
 	if b.Current, err = s.roundView(ctx, v, g, week, today); err != nil {
@@ -328,7 +328,7 @@ func (s *Service) GuessGame(ctx context.Context, v domain.Viewer, guildID string
 	if err != nil {
 		return err
 	}
-	today := s.today(g)
+	today := s.gameToday(g)
 	week := domain.WeekStart(today)
 	r, err := s.games.GetRound(ctx, guildID, week)
 	if err != nil {
