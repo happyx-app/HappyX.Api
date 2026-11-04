@@ -21,6 +21,7 @@ func TestWebDashboardInsights(t *testing.T) {
 		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID + "/mood", `{"mood":4,"day":"2026-10-21"}`},
 		{"PUT", "/v1/guilds/" + guildA + "/members/" + memberID + "/mood", `{"mood":5}`},
 		{"PUT", "/v1/guilds/" + guildA + "/members/" + other + "/mood", `{"mood":3}`},
+		{"PATCH", "/v1/guilds/" + guildA, `{"survey_enabled":true}`},
 		{"POST", "/v1/guilds/" + guildA + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`},
 		{"PUT", "/v1/guilds/" + guildA + "/dispatches/survey/2026-10-22", `{"recipients":3,"failed":1}`},
 		{"POST", "/v1/guilds/" + guildA + "/kudos", `{"from_discord_user_id":"` + memberID + `","to_discord_user_id":"` + other + `","message":"gracias"}`},

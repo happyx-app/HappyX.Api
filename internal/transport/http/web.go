@@ -268,6 +268,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	}
 	var in struct {
 		Anonymous       *bool          `json:"anonymous"`
+		SurveyEnabled   *bool          `json:"survey_enabled"`
 		Timezone        *string        `json:"timezone"`
 		Language        *string        `json:"language"`
 		SurveyHour      *int           `json:"survey_hour"`
@@ -285,7 +286,8 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		return
 	}
 	p := usecase.SettingsPatch{
-		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
+		SurveyEnabled: in.SurveyEnabled,
+		Anonymous:     in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		GamesEnabled: in.GamesEnabled, KudosChannelID: in.KudosChannelID, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
 		SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(), CanvasEnabled: in.CanvasEnabled,
 	}

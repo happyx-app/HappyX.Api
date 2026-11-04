@@ -90,6 +90,8 @@ type SettingsPatch struct {
 	GameRoles   *domain.RoleFilter
 	// CanvasEnabled turns the team canvas on or off. Turning it off keeps the drawings.
 	CanvasEnabled *bool
+	// SurveyEnabled starts or stops the daily survey and the game for the whole server.
+	SurveyEnabled *bool
 }
 
 func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p SettingsPatch) (domain.Guild, error) {
@@ -133,6 +135,9 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.CanvasEnabled != nil {
 		st.CanvasEnabled = *p.CanvasEnabled
+	}
+	if p.SurveyEnabled != nil {
+		st.SurveyEnabled = *p.SurveyEnabled
 	}
 	for _, f := range []struct {
 		field string
@@ -437,8 +442,14 @@ func (s *Service) ClaimDispatch(ctx context.Context, guildID string, kind domain
 	if period.IsZero() {
 		return false, domain.ValidationError{Reason: "period is required"}
 	}
-	if _, err := s.activeGuild(ctx, guildID); err != nil {
+	g, err := s.activeGuild(ctx, guildID)
+	if err != nil {
 		return false, err
+	}
+	// Until the survey is started, nobody gets the survey or the game. Saying "already sent"
+	// keeps older bots that don't read survey_enabled from sending them too.
+	if !g.Settings.SurveyEnabled && kind != domain.DispatchReport {
+		return false, nil
 	}
 	return s.dispatches.Claim(ctx, guildID, kind, domain.TruncateDay(period), domain.MaxDispatchAttempts)
 }
