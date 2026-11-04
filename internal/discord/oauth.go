@@ -50,12 +50,17 @@ func (o *OAuth) AuthURL(state string) string {
 // Embed Links, so kudos can be posted in a kudos channel. Surveys and reports go by DM.
 const botPermissions = 1<<10 | 1<<11 | 1<<14
 
-// InviteURL adds the bot to a server. The dashboard and the bot share one Discord application.
-func (o *OAuth) InviteURL() string {
+// InviteURL adds the bot to a server and logs the user in on the way: the dashboard and the bot
+// share one Discord application, so one approval does both. Discord then sends the browser to
+// the login callback, adding the chosen server's guild_id.
+func (o *OAuth) InviteURL(state string) string {
 	q := url.Values{
-		"client_id":   {o.ClientID},
-		"scope":       {"bot applications.commands"},
-		"permissions": {strconv.Itoa(botPermissions)},
+		"client_id":     {o.ClientID},
+		"redirect_uri":  {o.RedirectURL},
+		"response_type": {"code"},
+		"scope":         {"bot applications.commands identify guilds"},
+		"permissions":   {strconv.Itoa(botPermissions)},
+		"state":         {state},
 	}
 	return "https://discord.com/oauth2/authorize?" + q.Encode()
 }

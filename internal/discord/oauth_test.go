@@ -61,15 +61,19 @@ func TestViewer(t *testing.T) {
 }
 
 func TestInviteURL(t *testing.T) {
-	u, err := url.Parse(NewOAuth("cid", "secret", "https://example.com/cb").InviteURL())
+	u, err := url.Parse(NewOAuth("cid", "secret", "https://example.com/cb").InviteURL("st"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	q := u.Query()
-	if u.Host != "discord.com" || q.Get("client_id") != "cid" || q.Get("scope") != "bot applications.commands" || q.Get("permissions") != "19456" {
+	if u.Host != "discord.com" || q.Get("client_id") != "cid" || q.Get("scope") != "bot applications.commands identify guilds" || q.Get("permissions") != "19456" {
 		t.Fatalf("invite URL: %s", u)
 	}
-	if q.Has("redirect_uri") || q.Has("client_secret") {
-		t.Fatalf("invite URL leaks login settings: %s", u)
+	// It comes back through the login callback, so the person lands on the new server's panel.
+	if q.Get("redirect_uri") != "https://example.com/cb" || q.Get("response_type") != "code" || q.Get("state") != "st" || q.Has("prompt") {
+		t.Fatalf("invite URL login: %s", u)
+	}
+	if q.Has("client_secret") {
+		t.Fatalf("invite URL leaks the secret: %s", u)
 	}
 }

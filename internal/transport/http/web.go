@@ -21,7 +21,8 @@ import (
 // Identity logs users in with Discord.
 type Identity interface {
 	AuthURL(state string) string
-	InviteURL() string
+	// InviteURL adds the bot and logs in, coming back to the login callback with guild_id.
+	InviteURL(state string) string
 	Viewer(ctx context.Context, code string) (domain.Viewer, error)
 }
 
@@ -102,14 +103,23 @@ func (s *Server) clearCookie(w http.ResponseWriter, name string) {
 	})
 }
 
-func (s *Server) webLogin(w http.ResponseWriter, r *http.Request) {
+// newState sets a fresh OAuth state cookie, which the callback checks against Discord's answer.
+func (s *Server) newState(w http.ResponseWriter) (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		s.fail(w, r, err)
-		return
+		return "", err
 	}
 	state := hex.EncodeToString(b)
 	s.setCookie(w, stateCookie, state, 10*time.Minute)
+	return state, nil
+}
+
+func (s *Server) webLogin(w http.ResponseWriter, r *http.Request) {
+	state, err := s.newState(w)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	if next := r.URL.Query().Get("next"); nextPath.MatchString(next) {
 		s.setCookie(w, nextCookie, next, 10*time.Minute)
 	} else {
@@ -118,10 +128,20 @@ func (s *Server) webLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.web.Identity.AuthURL(state), http.StatusFound)
 }
 
-// webInvite sends the landing page's "Add to Discord" button to Discord, which needs no login.
+// webInvite sends the "Add to Discord" button to Discord, which needs no login: the same
+// approval logs the user in, and the callback opens the new server's panel.
 func (s *Server) webInvite(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, s.web.Identity.InviteURL(), http.StatusFound)
+	state, err := s.newState(w)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.clearCookie(w, nextCookie)
+	http.Redirect(w, r, s.web.Identity.InviteURL(state), http.StatusFound)
 }
+
+// snowflake matches a Discord ID, such as the guild_id Discord adds after an invite.
+var snowflake = regexp.MustCompile(`^[0-9]{17,20}$`)
 
 func (s *Server) webCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -130,6 +150,11 @@ func (s *Server) webCallback(w http.ResponseWriter, r *http.Request) {
 	home := s.web.PublicURL + "/"
 	if n, err := r.Cookie(nextCookie); err == nil && nextPath.MatchString(n.Value) {
 		home += "#" + n.Value
+	}
+	// After adding the bot, its new server's panel; the web waits there until the bot has
+	// registered it.
+	if id := q.Get("guild_id"); snowflake.MatchString(id) {
+		home = s.web.PublicURL + "/#/g/" + id + "?added=1"
 	}
 	s.clearCookie(w, nextCookie)
 	if err != nil || q.Get("state") == "" || subtle.ConstantTimeCompare([]byte(c.Value), []byte(q.Get("state"))) != 1 {

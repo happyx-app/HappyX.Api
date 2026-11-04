@@ -32,7 +32,9 @@ func (fakeDiscord) AuthURL(state string) string {
 	return "https://discord.test/authorize?state=" + state
 }
 
-func (fakeDiscord) InviteURL() string { return "https://discord.test/invite" }
+func (fakeDiscord) InviteURL(state string) string {
+	return "https://discord.test/invite?state=" + state
+}
 
 func (fakeDiscord) Viewer(_ context.Context, code string) (domain.Viewer, error) {
 	switch code {
@@ -138,9 +140,26 @@ func TestWebDashboard(t *testing.T) {
 			t.Errorf("next %q: went to %s, want %s", next, got, want)
 		}
 	}
-	// Adding the bot needs no login.
-	if res, _ := get(t, anon, srv.URL+"/web/auth/invite"); res.StatusCode != http.StatusFound || res.Header.Get("Location") != "https://discord.test/invite" {
-		t.Fatalf("invite: %d %s", res.StatusCode, res.Header.Get("Location"))
+	// Adding the bot needs no login: Discord logs the user in on the way and sends them to the
+	// new server's panel. A guild_id that isn't a Discord ID is ignored.
+	for guildID, want := range map[string]string{
+		guildA:      "http://happyx.test/#/g/" + guildA + "?added=1",
+		"1/../../x": "http://happyx.test/",
+		"":          "http://happyx.test/",
+	} {
+		c := newWebClient(t)
+		res, _ := get(t, c, srv.URL+"/web/auth/invite")
+		loc, _ := url.Parse(res.Header.Get("Location"))
+		if res.StatusCode != http.StatusFound || loc.Host != "discord.test" || loc.Query().Get("state") == "" {
+			t.Fatalf("invite: %d %s", res.StatusCode, loc)
+		}
+		res, _ = get(t, c, srv.URL+"/web/auth/callback?code=adminA&guild_id="+url.QueryEscape(guildID)+"&permissions=19456&state="+loc.Query().Get("state"))
+		if got := res.Header.Get("Location"); got != want {
+			t.Errorf("invite guild %q: went to %s, want %s", guildID, got, want)
+		}
+		if _, me := get(t, c, srv.URL+"/web/me"); me["user"] == nil {
+			t.Errorf("invite guild %q didn't log in: %v", guildID, me)
+		}
 	}
 	// The bot's API key does not open the dashboard routes, and a session doesn't open /v1.
 	if code, _ := do(t, srv, "GET", "/web/me", key, ""); code != 401 {
