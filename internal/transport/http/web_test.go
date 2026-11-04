@@ -232,7 +232,7 @@ func TestWebMyMoods(t *testing.T) {
 	if b["discord_guild_id"] != guildB || b["responses"].(float64) != 1 || b["streak"].(float64) != 1 { // answered yesterday, not yet today
 		t.Fatalf("server B: %v", b)
 	}
-	if a["discord_guild_id"] != guildA || a["responses"].(float64) != 3 || a["average"].(float64) != 4 || a["streak"].(float64) != 3 {
+	if a["discord_guild_id"] != guildA || a["responses"].(float64) != 3 || a["average"].(float64) != 4 || a["streak"].(float64) != 3 || a["anonymous"] != true {
 		t.Fatalf("server A: %v", a)
 	}
 	// The bot can ask for every member's streak, to fill {{user.streak}}.

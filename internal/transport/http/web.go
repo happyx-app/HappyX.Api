@@ -421,13 +421,15 @@ func requireJSON(w http.ResponseWriter, r *http.Request) bool {
 }
 
 type evolutionDTO struct {
-	DiscordGuildID string      `json:"discord_guild_id"`
-	Name           string      `json:"name"`
-	Timezone       string      `json:"timezone"`
-	Responses      int         `json:"responses"`
-	Average        float64     `json:"average"`
-	Streak         int         `json:"streak"`
-	Entries        []myMoodDTO `json:"entries"`
+	DiscordGuildID string `json:"discord_guild_id"`
+	Name           string `json:"name"`
+	Timezone       string `json:"timezone"`
+	// Anonymous is the server's current mode, so members can see whether the admin sees who answers.
+	Anonymous bool        `json:"anonymous"`
+	Responses int         `json:"responses"`
+	Average   float64     `json:"average"`
+	Streak    int         `json:"streak"`
+	Entries   []myMoodDTO `json:"entries"`
 }
 
 type myMoodDTO struct {
@@ -463,7 +465,7 @@ func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Vie
 	}{from.Format(dateLayout), to.Format(dateLayout), []evolutionDTO{}}
 	for _, ev := range evs {
 		d := evolutionDTO{
-			DiscordGuildID: ev.Guild.DiscordID, Name: ev.Guild.Name, Timezone: ev.Guild.Settings.Timezone,
+			DiscordGuildID: ev.Guild.DiscordID, Name: ev.Guild.Name, Timezone: ev.Guild.Settings.Timezone, Anonymous: ev.Guild.Settings.Anonymous,
 			Responses: ev.Responses, Average: ev.Average, Streak: ev.Streak, Entries: []myMoodDTO{},
 		}
 		for _, e := range ev.Entries {
