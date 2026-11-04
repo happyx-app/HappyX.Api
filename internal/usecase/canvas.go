@@ -45,11 +45,10 @@ func (s *Service) canvasGuild(ctx context.Context, v domain.Viewer, guildID stri
 	if level >= domain.AccessView {
 		return g, level >= domain.AccessManage, nil
 	}
-	if !g.Settings.GamesEnabled {
-		return domain.Guild{}, false, domain.ErrNotFound
-	}
-	switch err := s.player(ctx, g, v.DiscordID); {
-	case errors.Is(err, domain.ErrNotAMember):
+	// Everyone in the server shares its canvas, whether or not they play or answer surveys.
+	m, err := s.members.Get(ctx, g.DiscordID, v.DiscordID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound) || (err == nil && !m.InServer):
 		return domain.Guild{}, false, domain.ErrNotFound
 	case err != nil:
 		return domain.Guild{}, false, err

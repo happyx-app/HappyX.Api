@@ -131,6 +131,12 @@ func (r *GuildRepo) ListJoined(ctx context.Context, userID string) ([]domain.Gui
 		ORDER BY name, id`, userID)
 }
 
+func (r *GuildRepo) ListInServer(ctx context.Context, userID string) ([]domain.Guild, error) {
+	return r.list(ctx, `SELECT `+guildCols+` FROM guilds
+		WHERE active AND id IN (SELECT guild_id FROM members WHERE discord_id = $1 AND in_server)
+		ORDER BY name, id`, userID)
+}
+
 func (r *GuildRepo) list(ctx context.Context, sql string, args ...any) ([]domain.Guild, error) {
 	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {

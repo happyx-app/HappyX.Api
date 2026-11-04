@@ -42,9 +42,12 @@ func TestWebCanvas(t *testing.T) {
 		return send(t, c, "POST", canvasURL+"/strokes", jsonCT, body)
 	}
 
-	// Members who can't see the dashboard or play get the same 404 as for a hidden server.
-	if code, _ := get(t, m, canvasURL); code.StatusCode != 404 {
-		t.Fatalf("member before games: %d", code.StatusCode)
+	// Every member sees the canvas, even with the game off; outsiders get a hidden server's 404.
+	if res, c := get(t, m, canvasURL); res.StatusCode != 200 || c["enabled"] != false || c["can_moderate"] != false {
+		t.Fatalf("member, game off: %d %v", res.StatusCode, c)
+	}
+	if res, _ := get(t, other, canvasURL); res.StatusCode != 404 {
+		t.Fatalf("outsider: %d", res.StatusCode)
 	}
 	res, c := get(t, admin, canvasURL)
 	if res.StatusCode != 200 || c["enabled"] != false || c["can_moderate"] != true || len(c["strokes"].([]any)) != 0 {
@@ -53,11 +56,11 @@ func TestWebCanvas(t *testing.T) {
 	if code, _ := add(admin, stroke("a1", 0)); code != 409 {
 		t.Fatalf("drawing while off: %d", code)
 	}
-	if code, g := patchSettings(t, srv, admin, guildA, jsonCT, `{"canvas_enabled":true,"games_enabled":true}`); code != 200 || g["canvas_enabled"] != true {
+	if code, g := patchSettings(t, srv, admin, guildA, jsonCT, `{"canvas_enabled":true,"games_enabled":false}`); code != 200 || g["canvas_enabled"] != true {
 		t.Fatalf("turn canvas on: %d %v", code, g)
 	}
 
-	// The game's players draw too.
+	// Members draw too, with the game off.
 	if code, out := add(m, stroke("d1", 1)); code != 201 || out["version"].(float64) != 1 {
 		t.Fatalf("member draws: %d %v", code, out)
 	}

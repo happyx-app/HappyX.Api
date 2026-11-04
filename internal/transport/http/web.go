@@ -192,7 +192,13 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 		s.fail(w, r, err)
 		return
 	}
-	// Games are open to every member, so they only name the server, not its settings.
+	members, err := s.svc.MemberGuilds(r.Context(), v)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	// Games and member servers are open to every member, so they only name the server, not
+	// its settings.
 	type gameGuildDTO struct {
 		DiscordID string `json:"discord_guild_id"`
 		Name      string `json:"name"`
@@ -207,12 +213,17 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 		User   viewerDTO      `json:"user"`
 		Guilds []myGuildDTO   `json:"guilds"`
 		Games  []gameGuildDTO `json:"games"`
-	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []myGuildDTO{}, []gameGuildDTO{}}
+		// Servers with HappyX where the user is a member without access to the dashboard.
+		MemberGuilds []gameGuildDTO `json:"member_guilds"`
+	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []myGuildDTO{}, []gameGuildDTO{}, []gameGuildDTO{}}
 	for _, g := range gs {
 		out.Guilds = append(out.Guilds, myGuildDTO{toGuildDTO(g.Guild), g.Level.String()})
 	}
 	for _, g := range games {
 		out.Games = append(out.Games, gameGuildDTO{g.DiscordID, g.Name})
+	}
+	for _, g := range members {
+		out.MemberGuilds = append(out.MemberGuilds, gameGuildDTO{g.DiscordID, g.Name})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -73,6 +73,16 @@ func (r guilds) ListJoined(_ context.Context, userID string) ([]domain.Guild, er
 	return nil, nil
 }
 
+func (r guilds) ListInServer(_ context.Context, userID string) ([]domain.Guild, error) {
+	d := r.s.current()
+	for _, m := range d.members {
+		if m.DiscordID == userID && m.InServer {
+			return []domain.Guild{d.guild}, nil
+		}
+	}
+	return nil, nil
+}
+
 func (guilds) Upsert(context.Context, domain.Guild) (domain.Guild, error) {
 	return domain.Guild{}, ErrReadOnly
 }
