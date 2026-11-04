@@ -299,6 +299,15 @@ func mustRegister(t *testing.T, svc *usecase.Service, guild string) {
 	}
 }
 
+// mustStartSurvey turns on the survey, which a guild the bot just joined has off.
+func mustStartSurvey(t *testing.T, svc *usecase.Service, guild string) {
+	t.Helper()
+	on := true
+	if _, err := svc.UpdateGuildSettings(context.Background(), guild, usecase.SettingsPatch{SurveyEnabled: &on}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func mustJoin(t *testing.T, svc *usecase.Service, guild, user string) {
 	t.Helper()
 	if _, err := svc.UpsertMember(context.Background(), guild, user, "user"+user[len(user)-1:], nil, nil); err != nil {
@@ -361,6 +370,13 @@ func TestClaimDispatchOnce(t *testing.T) {
 		}
 		return ok
 	}
+	for _, kind := range []domain.DispatchKind{domain.DispatchSurvey, domain.DispatchGame, domain.DispatchGameGuess} {
+		if claim(guildA, kind) {
+			t.Fatalf("%s claimed before the survey was started", kind)
+		}
+	}
+	mustStartSurvey(t, svc, guildA)
+	mustStartSurvey(t, svc, guildB)
 	if !claim(guildA, domain.DispatchSurvey) {
 		t.Fatal("first claim should succeed")
 	}
@@ -379,6 +395,7 @@ func TestReleasedDispatchRetries(t *testing.T) {
 	ctx := context.Background()
 	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
 	mustRegister(t, svc, guildA)
+	mustStartSurvey(t, svc, guildA)
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 
 	claim := func() bool {

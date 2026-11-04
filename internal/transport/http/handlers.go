@@ -18,6 +18,7 @@ type guildDTO struct {
 	Name            string        `json:"name"`
 	AdminDiscordID  string        `json:"admin_discord_user_id"`
 	Anonymous       bool          `json:"anonymous"`
+	SurveyEnabled   bool          `json:"survey_enabled"`
 	Timezone        string        `json:"timezone"`
 	Language        string        `json:"language"`
 	SurveyHour      int           `json:"survey_hour"`
@@ -62,7 +63,7 @@ func (d *roleFilterDTO) patch() *domain.RoleFilter {
 func toGuildDTO(g domain.Guild) guildDTO {
 	return guildDTO{
 		DiscordID: g.DiscordID, Name: g.Name, AdminDiscordID: g.AdminDiscordID,
-		Anonymous: g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
+		Anonymous: g.Settings.Anonymous, SurveyEnabled: g.Settings.SurveyEnabled, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM,
 		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled,
 		WorkingDays: g.Settings.WorkingDays.ISO(), SurveyMessage: g.Settings.SurveyMessage,
@@ -218,6 +219,7 @@ func (s *Server) getGuild(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Anonymous       *bool          `json:"anonymous"`
+		SurveyEnabled   *bool          `json:"survey_enabled"`
 		Timezone        *string        `json:"timezone"`
 		Language        *string        `json:"language"`
 		SurveyHour      *int           `json:"survey_hour"`
@@ -234,7 +236,8 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := usecase.SettingsPatch{
-		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
+		SurveyEnabled: in.SurveyEnabled,
+		Anonymous:     in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		AdminDiscordID: in.AdminDiscordID, KudosChannelID: in.KudosChannelID, GamesEnabled: in.GamesEnabled,
 		ReportDM: in.ReportDM, SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(),
 	}
@@ -580,6 +583,25 @@ func (s *Server) claimDispatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"kind": in.Kind, "period": in.Period})
+}
+
+// getDispatch answers 200 when the period was already claimed for sending, and 404 when not.
+func (s *Server) getDispatch(w http.ResponseWriter, r *http.Request) {
+	period, err := time.Parse(dateLayout, r.PathValue("period"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "period must be YYYY-MM-DD")
+		return
+	}
+	sent, err := s.svc.DispatchSent(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if !sent {
+		writeError(w, http.StatusNotFound, "not dispatched")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"kind": r.PathValue("kind"), "period": r.PathValue("period")})
 }
 
 // finishDispatch records how many people a claimed send went to and how many DMs failed.

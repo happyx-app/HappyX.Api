@@ -60,7 +60,11 @@ type Guild struct {
 
 type GuildSettings struct {
 	// Anonymous hides who answered what in reports. Defaults to true.
-	Anonymous       bool
+	Anonymous bool
+	// SurveyEnabled sends the daily survey and the «Who's who?» game. A new server starts with it
+	// off, until the admin starts the survey from the setup assistant or the web. Reports and
+	// kudos don't depend on it.
+	SurveyEnabled   bool
 	Timezone        string
 	SurveyHour      int // 0-23, local to Timezone
 	ReportFrequency ReportFrequency

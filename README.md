@@ -108,6 +108,14 @@ replaces it), from the bot's Thursday DM or the web. On Monday one of them is dr
 the round, whatever question the bot sent; with no proposals the bot's question is used. Who
 proposed it stays secret until the results, when it comes out with the authors.
 
+### Starting the survey
+
+A server the bot joins starts with the survey off (`survey_enabled: false`), so nobody gets a DM
+before the admin has set things up. The admin starts it from the bot's setup assistant or the
+web settings, and can turn it off again the same way. While it is off, `POST .../dispatches`
+answers 409 for `survey`, `game` and `game_guess` (also to older bots), and the report still goes
+out. Servers that already used HappyX before this change keep it on.
+
 ### Team canvas
 
 Off by default (`canvas_enabled`, only changed from the web). When it is on, whoever can open one
@@ -187,7 +195,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | POST | `/web/guilds/{guildID}/canvas/strokes` | `drawing_id` (1-36 letters, digits, `-`, `_`), `color` (`0`-`4`), `anchor` (`[x, y]`, 0 to 1), `points` (2 to 500 points, within 4000 px of the anchor): 201 with `{stroke, version}`. 409 while the canvas is off or full, 429 past 60 a minute. Needs `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}/canvas/drawings/{drawingID}` | erases a drawing: the user's own, or any for moderators. `{version}`; 404 if there is nothing of theirs to erase. Needs `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}/canvas` | erases the whole canvas. `{version}`. Needs **manage** and `Content-Type: application/json` |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `report_dm`, `language`, `games_enabled`, `canvas_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `survey_enabled`, `report_dm`, `language`, `games_enabled`, `canvas_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
 | GET | `/web/guilds/{guildID}/roles` | the server's Discord roles (`id`, `name`, `color`, `position`, highest first), for the settings' pickers. Needs **manage** |
 | GET | `/web/guilds/{guildID}/channels` | the server's text and announcement channels (`id`, `name`, `category`, `position`, `can_post`), in Discord's order, for the kudos channel picker. Needs **manage** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |
@@ -271,7 +279,7 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | GET | `/v1/guilds` | | active guilds (for the bot's scheduler) |
 | POST | `/v1/guilds` | `discord_guild_id`, `name`, `admin_discord_user_id` | register on join; idempotent, keeps settings and the admin of a known server |
 | GET | `/v1/guilds/{guildID}` | | |
-| PATCH | `/v1/guilds/{guildID}` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `report_dm` (send the report to the main admin by DM; default `true`, `false` means web and `/report` only), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it; once the bot has sent the channels, it must be one of them), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`), `survey_roles` and `game_roles` (see «Survey roles») | |
+| PATCH | `/v1/guilds/{guildID}` | any of `survey_enabled` (send the survey and the game; `false` for a new server until the admin starts it), `anonymous`, `timezone`, `survey_hour`, `report_frequency` (`weekly`/`monthly`), `report_dm` (send the report to the main admin by DM; default `true`, `false` means web and `/report` only), `language` (`en`, `es`, `pt-BR`…; default `en`), `admin_discord_user_id`, `kudos_channel_id` (`""` clears it; once the bot has sent the channels, it must be one of them), `games_enabled`, `working_days` (ISO days, `1` Monday to `7` Sunday, at least one; default `[1,2,3,4,5]`), `survey_roles` and `game_roles` (see «Survey roles») | |
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys and hides the server from the dashboard. Data is kept 30 days in case the bot is added back, then deleted |
 | GET | `/v1/removals` | | Discord IDs of the servers deleted from the dashboard that the bot must leave |
 | DELETE | `/v1/removals/{guildID}` | | the bot has left the server. Until then `POST /v1/guilds` for it answers 410 |
@@ -290,6 +298,7 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | PUT | `/v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}` | `answer` (1-200) | replaces an earlier answer. 403 for paused members, 409 once answering is over |
 | PUT | `/v1/guilds/{guildID}/game/proposals/{userID}` | `question` (1-200) | proposes next week's question, replacing an earlier one; returns its `week`. 403 for paused members, 409 Monday to Wednesday |
 | POST | `/v1/guilds/{guildID}/dispatches` | `kind` (`survey`/`report`/`game`/`game_guess`), `period` (`YYYY-MM-DD`) | 201: go ahead and send; 409: already sent (or reached nobody 3 times). Makes scheduled sends exactly-once across restarts |
+| GET | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | | whether the period was already claimed for sending: 200 if so, 404 if not (never claimed, or given back). The bot uses it to tell an admin who restarts the survey whether today's already went out |
 | PUT | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | `recipients`, `failed` (optional, default 0) | after a claimed send: how many people it went to and how many DMs failed (usually DMs closed). 204; 404 if it wasn't claimed. Only counts, for the admin dashboard |
 | DELETE | `/v1/guilds/{guildID}/dispatches/{kind}/{period}` | | gives back a claim whose send reached nobody (the API or Discord failed, or every DM failed), so the next claim for that period can try again, up to 3 tries in all. 204; 404 if it isn't claimed or is already given back |
 

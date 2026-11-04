@@ -76,7 +76,7 @@ func NewGuildRepo(db *pgxpool.Pool) *GuildRepo { return &GuildRepo{db: db} }
 
 const guildCols = `discord_id, name, admin_discord_id, anonymous, timezone, survey_hour,
 	report_frequency, report_dm, language, kudos_channel_id, games_enabled, working_days, survey_message,
-	survey_roles_mode, survey_role_ids, game_roles_mode, game_role_ids, canvas_enabled, active, created_at, updated_at`
+	survey_roles_mode, survey_role_ids, game_roles_mode, game_role_ids, canvas_enabled, survey_enabled, active, created_at, updated_at`
 
 func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var g domain.Guild
@@ -85,7 +85,7 @@ func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var surveyMode, gameMode string
 	err := row.Scan(&g.DiscordID, &g.Name, &g.AdminDiscordID, &g.Settings.Anonymous,
 		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.ReportDM, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &workingDays, &g.Settings.SurveyMessage,
-		&surveyMode, &g.Settings.SurveyRoles.RoleIDs, &gameMode, &g.Settings.GameRoles.RoleIDs, &g.Settings.CanvasEnabled, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+		&surveyMode, &g.Settings.SurveyRoles.RoleIDs, &gameMode, &g.Settings.GameRoles.RoleIDs, &g.Settings.CanvasEnabled, &g.Settings.SurveyEnabled, &g.Active, &g.CreatedAt, &g.UpdatedAt)
 	g.Settings.ReportFrequency = domain.ReportFrequency(freq)
 	g.Settings.SurveyRoles.Mode = domain.RoleFilterMode(surveyMode)
 	g.Settings.GameRoles.Mode = domain.RoleFilterMode(gameMode)
@@ -154,12 +154,12 @@ func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s
 		       report_frequency = $6, language = $7, kudos_channel_id = $8, games_enabled = $9,
 		       working_days = $10, survey_message = $11, report_dm = $12,
 		       survey_roles_mode = $13, survey_role_ids = $14, game_roles_mode = $15, game_role_ids = $16,
-		       canvas_enabled = $17, updated_at = now()
+		       canvas_enabled = $17, survey_enabled = $18, updated_at = now()
 		WHERE discord_id = $1
 		RETURNING `+guildCols,
 		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID, s.GamesEnabled,
 		int16(s.WorkingDays), s.SurveyMessage, s.ReportDM, filterMode(s.SurveyRoles), filterRoleIDs(s.SurveyRoles),
-		filterMode(s.GameRoles), filterRoleIDs(s.GameRoles), s.CanvasEnabled))
+		filterMode(s.GameRoles), filterRoleIDs(s.GameRoles), s.CanvasEnabled, s.SurveyEnabled))
 }
 
 // filterMode and filterRoleIDs store role filters that were never set as everyone.
@@ -824,6 +824,15 @@ func (r *DispatchRepo) ListFinished(ctx context.Context, guildID string, kind do
 		err := row.Scan(&d.Day, &d.Recipients, &d.Failed)
 		return d, err
 	})
+}
+
+func (r *DispatchRepo) Held(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error) {
+	var held bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM dispatches d JOIN guilds g ON g.id = d.guild_id
+		WHERE g.discord_id = $1 AND d.kind = $2 AND d.period = $3 AND d.released_at IS NULL)`,
+		guildID, string(kind), period).Scan(&held)
+	return held, err
 }
 
 func (r *DispatchRepo) Release(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error {

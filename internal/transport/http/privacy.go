@@ -173,6 +173,7 @@ type serverExportDTO struct {
 	SurveyRoles     roleFilterDTO `json:"survey_roles"`
 	GameRoles       roleFilterDTO `json:"game_roles"`
 	CanvasEnabled   bool          `json:"canvas_enabled"`
+	SurveyEnabled   bool          `json:"survey_enabled"`
 	AdminDiscordID  string        `json:"admin_discord_user_id"`
 	CreatedAt       time.Time     `json:"created_at"`
 }
@@ -230,7 +231,7 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 			SurveyHour: g.Settings.SurveyHour, WorkingDays: g.Settings.WorkingDays.ISO(),
 			ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM, GamesEnabled: g.Settings.GamesEnabled,
 			SurveyMessage: g.Settings.SurveyMessage, SurveyRoles: toRoleFilterDTO(g.Settings.SurveyRoles),
-			GameRoles: toRoleFilterDTO(g.Settings.GameRoles), CanvasEnabled: g.Settings.CanvasEnabled, AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
+			GameRoles: toRoleFilterDTO(g.Settings.GameRoles), CanvasEnabled: g.Settings.CanvasEnabled, SurveyEnabled: g.Settings.SurveyEnabled, AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
 		},
 		Members: []exportMemberDTO{}, Moods: []exportMoodDTO{}, Kudos: toExportKudos(x.Kudos, true, true), Games: []exportRoundDTO{},
 		Canvas: []canvasStrokeDTO{},

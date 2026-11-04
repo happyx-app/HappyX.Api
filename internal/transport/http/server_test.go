@@ -96,10 +96,17 @@ func TestMoodFlow(t *testing.T) {
 		{"PATCH", "/v1/guilds/" + g, `{"language":"pt-BR"}`, 200},
 		{"PATCH", "/v1/guilds/" + g, `{"language":"klingon"}`, 400},
 		{"GET", "/v1/guilds/999999999999999999", ``, 404},
+		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 409}, // a new server starts with the survey off
+		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"report","period":"2026-10-22"}`, 201}, // the report doesn't wait for it
+		{"PATCH", "/v1/guilds/" + g, `{"survey_enabled":true}`, 200},
+		{"GET", "/v1/guilds/" + g + "/dispatches/survey/2026-10-22", ``, 404},
 		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 201},
+		{"GET", "/v1/guilds/" + g + "/dispatches/survey/2026-10-22", ``, 200},
+		{"GET", "/v1/guilds/" + g + "/dispatches/spam/2026-10-22", ``, 400},
 		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 409},
 		{"DELETE", "/v1/guilds/" + g + "/dispatches/survey/2026-10-22", ``, 204},
 		{"DELETE", "/v1/guilds/" + g + "/dispatches/survey/2026-10-22", ``, 404},
+		{"GET", "/v1/guilds/" + g + "/dispatches/survey/2026-10-22", ``, 404}, // given back
 		{"DELETE", "/v1/guilds/" + g + "/dispatches/spam/2026-10-22", ``, 400},
 		{"POST", "/v1/guilds/" + g + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 201},
 	}

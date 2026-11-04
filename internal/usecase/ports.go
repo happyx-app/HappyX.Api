@@ -77,6 +77,8 @@ type DispatchRepository interface {
 	// Claim records that kind was sent to the guild for period. It returns false if it
 	// had already been claimed, unless that claim was released and has tries left.
 	Claim(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, maxAttempts int) (bool, error)
+	// Held reports whether a claim for the period stands (it was taken and not given back).
+	Held(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) (bool, error)
 	// Release gives back a claim whose send reached nobody, so it can be claimed again.
 	// domain.ErrNotFound when it wasn't claimed or is already released.
 	Release(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error

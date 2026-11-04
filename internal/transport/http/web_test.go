@@ -333,8 +333,15 @@ func TestWebSettings(t *testing.T) {
 	if code, g := patchSettings(t, srv, a, guildA, jsonCT, `{"report_dm":false}`); code != 200 || g["report_dm"] != false {
 		t.Fatalf("report dm off: %d %v", code, g)
 	}
+	// The survey waits until the admin starts it.
+	if g["survey_enabled"] != false {
+		t.Fatalf("survey_enabled default: %v", g)
+	}
+	if code, g := patchSettings(t, srv, a, guildA, jsonCT, `{"survey_enabled":true}`); code != 200 || g["survey_enabled"] != true {
+		t.Fatalf("start survey: %d %v", code, g)
+	}
 	// The bot sees the change.
-	if code, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 200 || g["language"] != "es" || g["survey_message"] != msg || g["report_dm"] != false {
+	if code, g := do(t, srv, "GET", "/v1/guilds/"+guildA, key, ""); code != 200 || g["language"] != "es" || g["survey_message"] != msg || g["report_dm"] != false || g["survey_enabled"] != true {
 		t.Fatalf("bot view after update: %d %v", code, g)
 	}
 	for _, c := range []struct {
