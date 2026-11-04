@@ -23,6 +23,9 @@ type GuildRepository interface {
 	ListVisible(ctx context.Context, userID string, guildIDs []string) ([]domain.Guild, error)
 	// ListJoined returns the active guilds where userID is a member taking part (not paused).
 	ListJoined(ctx context.Context, userID string) ([]domain.Guild, error)
+	// ListInServer returns the active guilds where userID is in the Discord server, whether or
+	// not they paused the survey.
+	ListInServer(ctx context.Context, userID string) ([]domain.Guild, error)
 	// UpdateConfig sets the guild's admin and settings in one write.
 	UpdateConfig(ctx context.Context, guildID, adminID string, s domain.GuildSettings) (domain.Guild, error)
 	// Deactivate marks the guild as left by the bot at the given time. Its data is kept until

@@ -66,7 +66,7 @@ func TestWebAccess(t *testing.T) {
 	// The role grants "view": reports yes, settings and access no.
 	v := newWebClient(t)
 	login(t, srv, v, "user:"+viewer)
-	if _, me := get(t, v, srv.URL+"/web/me"); strings.Join(guildIDs(me), ",") != guildA || me["guilds"].([]any)[0].(map[string]any)["access"] != "view" {
+	if _, me := get(t, v, srv.URL+"/web/me"); strings.Join(guildIDs(me), ",") != guildA || me["guilds"].([]any)[0].(map[string]any)["access"] != "view" || len(me["member_guilds"].([]any)) != 0 {
 		t.Fatalf("viewer me: %v", me)
 	}
 	if res, _ := get(t, v, srv.URL+"/web/guilds/"+guildA+"/report"); res.StatusCode != 200 {

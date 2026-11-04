@@ -71,6 +71,10 @@ func TestGameFlow(t *testing.T) {
 	if games := me["games"].([]any); len(games) != 1 || games[0].(map[string]any)["discord_guild_id"] != guildA {
 		t.Fatalf("member's games: %v", me)
 	}
+	// Without access to the dashboard, the member's server is still listed by name.
+	if ms := me["member_guilds"].([]any); len(ms) != 1 || ms[0].(map[string]any)["discord_guild_id"] != guildA || len(me["guilds"].([]any)) != 0 {
+		t.Fatalf("member's servers: %v", me)
+	}
 	// The admin isn't a member, so they configure the game but don't play it.
 	if _, me := get(t, admin, srv.URL+"/web/me"); len(me["games"].([]any)) != 0 {
 		t.Fatalf("admin's games: %v", me)

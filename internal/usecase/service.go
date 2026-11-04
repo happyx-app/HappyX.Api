@@ -590,6 +590,30 @@ func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]GuildAc
 	return out, nil
 }
 
+// MemberGuilds returns the active guilds where the viewer is in the Discord server but can't
+// see the dashboard. The web shows them by name, with the team canvas, so members aren't told
+// to add a bot their server already has.
+func (s *Service) MemberGuilds(ctx context.Context, v domain.Viewer) ([]domain.Guild, error) {
+	if v.DiscordID == "" {
+		return nil, nil
+	}
+	gs, err := s.guilds.ListInServer(ctx, v.DiscordID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Guild, 0, len(gs))
+	for _, g := range gs {
+		level, err := s.accessOf(ctx, g, v.DiscordID, v.ManagesInDiscord(g.DiscordID))
+		if err != nil {
+			return nil, err
+		}
+		if level < domain.AccessView {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
 // streakWindow is how far back answers are read to count a streak.
 const streakWindow = 400
 
