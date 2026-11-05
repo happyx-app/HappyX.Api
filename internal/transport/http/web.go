@@ -68,6 +68,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/me/moods", s.requireViewer(s.webMyMoods))
 	mux.Handle("GET /web/me/data", s.requireViewer(s.webMyData))
 	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
+	mux.Handle("PUT /web/guilds/{guildID}/me/survey", s.requireViewer(s.webSetMySurvey))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("GET /web/guilds/{guildID}/health", s.requireViewer(s.webHealth))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
@@ -222,6 +223,11 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 		s.fail(w, r, err)
 		return
 	}
+	paused, err := s.svc.PausedGuilds(r.Context(), v)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	// Games and member servers are open to every member, so they only name the server, not
 	// its settings.
 	type gameGuildDTO struct {
@@ -240,7 +246,9 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 		Games  []gameGuildDTO `json:"games"`
 		// Servers with HappyX where the user is a member without access to the dashboard.
 		MemberGuilds []gameGuildDTO `json:"member_guilds"`
-	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []myGuildDTO{}, []gameGuildDTO{}, []gameGuildDTO{}}
+		// Servers where the user is in the Discord server but paused the survey.
+		PausedGuilds []gameGuildDTO `json:"paused_guilds"`
+	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []myGuildDTO{}, []gameGuildDTO{}, []gameGuildDTO{}, []gameGuildDTO{}}
 	for _, g := range gs {
 		out.Guilds = append(out.Guilds, myGuildDTO{toGuildDTO(g.Guild), g.Level.String()})
 	}
@@ -250,7 +258,33 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 	for _, g := range members {
 		out.MemberGuilds = append(out.MemberGuilds, gameGuildDTO{g.DiscordID, g.Name})
 	}
+	for _, g := range paused {
+		out.PausedGuilds = append(out.PausedGuilds, gameGuildDTO{g.DiscordID, g.Name})
+	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// webSetMySurvey pauses or resumes the survey for the logged-in user in one server:
+// {"active": true} is the web's way of /happyx resume.
+func (s *Server) webSetMySurvey(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	if !requireJSON(w, r) {
+		return
+	}
+	var in struct {
+		Active *bool `json:"active"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Active == nil {
+		writeError(w, http.StatusBadRequest, "active is required")
+		return
+	}
+	if err := s.svc.SetMySurvey(r.Context(), v, r.PathValue("guildID"), *in.Active); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"active": *in.Active})
 }
 
 func (s *Server) webReport(w http.ResponseWriter, r *http.Request, v domain.Viewer) {

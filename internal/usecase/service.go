@@ -614,6 +614,53 @@ func (s *Service) MemberGuilds(ctx context.Context, v domain.Viewer) ([]domain.G
 	return out, nil
 }
 
+// PausedGuilds returns the active guilds where the viewer is in the Discord server but said
+// «don't ask me again», so the survey doesn't reach them there.
+func (s *Service) PausedGuilds(ctx context.Context, v domain.Viewer) ([]domain.Guild, error) {
+	if v.DiscordID == "" {
+		return nil, nil
+	}
+	in, err := s.guilds.ListInServer(ctx, v.DiscordID)
+	if err != nil {
+		return nil, err
+	}
+	joined, err := s.guilds.ListJoined(ctx, v.DiscordID)
+	if err != nil {
+		return nil, err
+	}
+	taking := make(map[string]bool, len(joined))
+	for _, g := range joined {
+		taking[g.DiscordID] = true
+	}
+	out := make([]domain.Guild, 0, len(in))
+	for _, g := range in {
+		if !taking[g.DiscordID] {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
+// SetMySurvey pauses or resumes the survey for the viewer in one guild, like the bot's
+// «don't ask me again» button and /happyx resume. Only someone in the Discord server can.
+func (s *Service) SetMySurvey(ctx context.Context, v domain.Viewer, guildID string, active bool) error {
+	if _, err := s.activeGuild(ctx, guildID); err != nil {
+		return err
+	}
+	m, err := s.members.Get(ctx, guildID, v.DiscordID)
+	if err != nil {
+		return err
+	}
+	if !m.InServer {
+		return domain.ErrNotFound
+	}
+	if !active {
+		return s.members.Deactivate(ctx, guildID, v.DiscordID)
+	}
+	_, err = s.members.Upsert(ctx, domain.Member{GuildDiscordID: guildID, DiscordID: v.DiscordID, Username: m.Username}, &active)
+	return err
+}
+
 // streakWindow is how far back answers are read to count a streak.
 const streakWindow = 400
 
