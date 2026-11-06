@@ -102,7 +102,11 @@ func (s *Server) webMyData(w http.ResponseWriter, r *http.Request, v domain.View
 		User       viewerDTO         `json:"user"`
 		ReportsFor []exportServerDTO `json:"receives_reports_for"`
 		Servers    []myServerDataDTO `json:"servers"`
-	}{"happyx-personal-data", exportVersion, s.web.Now().UTC().Truncate(time.Second), viewerDTO{v.DiscordID, v.Username, v.Avatar}, []exportServerDTO{}, []myServerDataDTO{}}
+		Vacations  []myVacationDTO   `json:"vacations"`
+	}{"happyx-personal-data", exportVersion, s.web.Now().UTC().Truncate(time.Second), viewerDTO{v.DiscordID, v.Username, v.Avatar}, []exportServerDTO{}, []myServerDataDTO{}, []myVacationDTO{}}
+	for _, vac := range d.Vacations {
+		out.Vacations = append(out.Vacations, toMyVacationDTO(vac))
+	}
 	for _, g := range d.ReportsFor {
 		out.ReportsFor = append(out.ReportsFor, exportServerDTO{g.DiscordID, g.Name})
 	}

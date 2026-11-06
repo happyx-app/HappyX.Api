@@ -50,7 +50,10 @@ func (r *PrivacyRepo) UserData(ctx context.Context, userID string) (domain.UserD
 		}
 		d.Guilds = append(d.Guilds, md)
 	}
-	return d, nil
+	rows, qerr = r.db.Query(ctx, `SELECT `+vacationCols+vacationFrom+`
+		WHERE v.user_discord_id = $1 ORDER BY v.starts_on, v.id`, userID)
+	d.Vacations, err = collect(rows, qerr, func(row pgx.Row) (domain.Vacation, error) { return scanVacation(row) })
+	return d, err
 }
 
 func (r *PrivacyRepo) memberData(ctx context.Context, m domain.Member) (domain.MemberData, error) {
@@ -165,6 +168,9 @@ func (r *PrivacyRepo) EraseUser(ctx context.Context, userID string) error {
 		`UPDATE guilds SET canvas_version = canvas_version + 1
 		 WHERE id IN (SELECT guild_id FROM canvas_strokes WHERE member_id IN ` + mine + `)`,
 		`DELETE FROM canvas_strokes WHERE member_id IN ` + mine,
+		// Their vacations, and their name on the ones they set for others as an admin.
+		`DELETE FROM vacations WHERE user_discord_id = $1`,
+		`UPDATE vacations SET set_by_discord_id = '' WHERE set_by_discord_id = $1`,
 		`UPDATE members SET active = FALSE, username = '', updated_at = now() WHERE discord_id = $1`,
 	} {
 		if _, err := tx.Exec(ctx, sql, userID); err != nil {

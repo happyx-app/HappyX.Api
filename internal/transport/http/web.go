@@ -68,7 +68,14 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/me/moods", s.requireViewer(s.webMyMoods))
 	mux.Handle("GET /web/me/data", s.requireViewer(s.webMyData))
 	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
+	mux.Handle("GET /web/me/vacations", s.requireViewer(s.webMyVacations))
+	mux.Handle("PUT /web/me/vacation", s.requireViewer(s.webSetMyVacation))
+	mux.Handle("DELETE /web/me/vacation", s.requireViewer(s.webDeleteMyVacation))
 	mux.Handle("PUT /web/guilds/{guildID}/me/survey", s.requireViewer(s.webSetMySurvey))
+	mux.Handle("DELETE /web/guilds/{guildID}/me/vacation", s.requireViewer(s.webDeleteMyVacation))
+	mux.Handle("GET /web/guilds/{guildID}/vacations", s.requireViewer(s.webGuildVacations))
+	mux.Handle("PUT /web/guilds/{guildID}/vacations/{userID}", s.requireViewer(s.webSetGuildVacation))
+	mux.Handle("DELETE /web/guilds/{guildID}/vacations/{userID}", s.requireViewer(s.webDeleteGuildVacation))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
 	mux.Handle("GET /web/guilds/{guildID}/health", s.requireViewer(s.webHealth))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
@@ -316,8 +323,9 @@ func (s *Server) webHealth(w http.ResponseWriter, r *http.Request, v domain.View
 	out := struct {
 		Audience   int      `json:"audience"`
 		OptedOut   int      `json:"opted_out"`
+		OnVacation int      `json:"on_vacation"`
 		LastSurvey *lastDTO `json:"last_survey"`
-	}{Audience: h.Audience, OptedOut: h.OptedOut}
+	}{Audience: h.Audience, OptedOut: h.OptedOut, OnVacation: h.OnVacation}
 	if l := h.LastSurvey; l != nil {
 		out.LastSurvey = &lastDTO{Day: l.Day.Format(dateLayout), Recipients: l.Recipients, Failed: l.Failed}
 	}

@@ -33,11 +33,13 @@ type demoHandler func(s *Server, w http.ResponseWriter, r *http.Request, v domai
 func (s *Server) demoRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/demo/{lang}/me", s.asDemoViewer((*Server).webMe))
 	mux.Handle("GET /web/demo/{lang}/me/moods", s.asDemoViewer((*Server).webMyMoods))
+	mux.Handle("GET /web/demo/{lang}/me/vacations", s.asDemoViewer((*Server).webMyVacations))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/report", s.asDemoViewer((*Server).webReport))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/health", s.asDemoViewer((*Server).webHealth))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/roles", s.asDemoViewer((*Server).webRoles))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/channels", s.asDemoViewer((*Server).webChannels))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/access", s.asDemoViewer((*Server).webAccess))
+	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/vacations", s.asDemoViewer((*Server).webGuildVacations))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/game", s.asDemoViewer((*Server).webGame))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/canvas", s.asDemoViewer((*Server).webCanvas))
 }

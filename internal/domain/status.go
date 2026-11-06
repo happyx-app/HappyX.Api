@@ -13,8 +13,10 @@ type DispatchStat struct {
 // team: who the survey goes to today and how the last one went.
 type GuildHealth struct {
 	// Audience is how many members would get the survey now: opted in, still in the server
-	// and allowed by the survey roles.
+	// and allowed by the survey roles, and not on vacation today.
 	Audience int
+	// OnVacation is how many members the survey would reach but are on vacation today.
+	OnVacation int
 	// OptedOut is how many members still in the server said «don't ask me again».
 	OptedOut int
 	// LastSurvey is the latest survey the bot finished sending, nil before the first one.
