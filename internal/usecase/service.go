@@ -19,7 +19,8 @@ type Service struct {
 	games      GameRepository
 	access     AccessRepository
 	privacy    PrivacyRepository
-	canvas     CanvasRepository // nil until WithCanvas
+	canvas     CanvasRepository   // nil until WithCanvas
+	vacations  VacationRepository // nil until WithVacations: nobody is ever on vacation
 	now        Clock
 	gameDay    func(today time.Time) time.Time // nil until WithGameDay
 }
@@ -294,9 +295,14 @@ func (s *Service) ListMembers(ctx context.Context, guildID string, purpose Membe
 	if purpose == MembersGame {
 		f = g.Settings.GameRoles
 	}
+	// Nobody gets a DM on their vacation.
+	away, err := s.onVacation(ctx, guildID, s.today(g))
+	if err != nil {
+		return nil, err
+	}
 	out := ms[:0]
 	for _, m := range ms {
-		if f.Includes(m.RoleIDs) {
+		if f.Includes(m.RoleIDs) && !away[m.DiscordID] {
 			out = append(out, m)
 		}
 	}
@@ -540,15 +546,22 @@ func (s *Service) GuildHealth(ctx context.Context, g domain.Guild) (domain.Guild
 	if err != nil {
 		return h, err
 	}
+	today := s.today(g)
+	away, err := s.onVacation(ctx, g.DiscordID, today)
+	if err != nil {
+		return h, err
+	}
 	for _, m := range ms {
 		switch {
 		case !m.Active:
 			h.OptedOut++
-		case g.Settings.SurveyRoles.Includes(m.RoleIDs):
+		case !g.Settings.SurveyRoles.Includes(m.RoleIDs):
+		case away[m.DiscordID]:
+			h.OnVacation++
+		default:
 			h.Audience++
 		}
 	}
-	today := s.today(g)
 	sent, err := s.dispatches.ListFinished(ctx, g.DiscordID, domain.DispatchSurvey, today.AddDate(0, 0, -healthLookback), today)
 	if err != nil {
 		return h, err
@@ -692,6 +705,13 @@ func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.
 	if err != nil {
 		return nil, err
 	}
+	// Vacations as far back as the streaks read, so their days don't break them.
+	var vacs []domain.Vacation
+	if s.vacations != nil {
+		if vacs, err = s.vacations.ForUser(ctx, v.DiscordID, readFrom); err != nil {
+			return nil, err
+		}
+	}
 	byGuild := map[string][]domain.MoodEntry{}
 	var order []string
 	for _, e := range entries {
@@ -706,7 +726,13 @@ func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.
 		if err != nil {
 			return nil, err
 		}
-		ev := domain.BuildEvolution(g, byGuild[id], from, to, s.today(g))
+		off := domain.Vacations{}
+		for _, vac := range vacs {
+			if vac.GuildDiscordID == "" || vac.GuildDiscordID == id {
+				off = append(off, vac)
+			}
+		}
+		ev := domain.BuildEvolution(g, byGuild[id], off, from, to, s.today(g))
 		if ev.Responses > 0 || ev.Streak > 0 {
 			out = append(out, ev)
 		}

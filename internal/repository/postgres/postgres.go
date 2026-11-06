@@ -449,8 +449,8 @@ func (r *MoodRepo) AnsweredSince(ctx context.Context, guildID string, since time
 // answered, like domain.Streak but in the database, so a big guild sends back one number per
 // member instead of every answer. Answers are read from `from`.
 //
-// A streak ends at the member's latest missed day: the latest working day before today they
-// didn't answer (today itself can still be answered). The streak is then the answers after it.
+// A streak ends at the member's latest missed day: the latest working day before today, outside
+// their vacations, they didn't answer (today itself can still be answered). The streak is then the answers after it.
 // Both steps walk the (member_id, day) index from today backwards, so the work grows with the
 // streaks, not with the guild's history.
 func (r *MoodRepo) Streaks(ctx context.Context, guildID string, workingDays domain.Weekdays, from, today time.Time) (map[string]int, error) {
@@ -463,6 +463,9 @@ func (r *MoodRepo) Streaks(ctx context.Context, guildID string, workingDays doma
 				SELECT d::date FROM generate_series($3::date - 1, $2::date, interval '-1 day') AS d
 				WHERE ($4::int >> EXTRACT(DOW FROM d)::int) & 1 = 1
 				  AND NOT EXISTS (SELECT 1 FROM mood_entries e WHERE e.member_id = m.id AND e.day = d::date)
+				  AND NOT EXISTS (SELECT 1 FROM vacations v
+				                  WHERE v.user_discord_id = m.discord_id AND (v.guild_id IS NULL OR v.guild_id = g.id)
+				                    AND d::date BETWEEN v.starts_on AND v.ends_on)
 				ORDER BY d DESC LIMIT 1
 			), $2::date - 1) AS missed
 		) x

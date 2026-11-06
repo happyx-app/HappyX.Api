@@ -10,13 +10,15 @@ type Evolution struct {
 	Responses int
 	Average   float64 // 0 when there are no responses
 	// Streak is how many days in a row up to today the person has answered. Not having
-	// answered yet today doesn't break it, and neither do the guild's non-working days.
+	// answered yet today doesn't break it, and neither do the guild's non-working days or the
+	// person's vacations.
 	Streak int
 }
 
 // BuildEvolution summarises entries (the person's answers in g, oldest first, which may
-// reach before from so the streak can be counted) for the period [from, to].
-func BuildEvolution(g Guild, entries []MoodEntry, from, to, today time.Time) Evolution {
+// reach before from so the streak can be counted) for the period [from, to]. off are the
+// person's vacations in g.
+func BuildEvolution(g Guild, entries []MoodEntry, off Vacations, from, to, today time.Time) Evolution {
 	ev := Evolution{Guild: g}
 	answered := map[time.Time]bool{}
 	sum := 0
@@ -33,20 +35,20 @@ func BuildEvolution(g Guild, entries []MoodEntry, from, to, today time.Time) Evo
 	if ev.Responses > 0 {
 		ev.Average = float64(sum) / float64(ev.Responses)
 	}
-	ev.Streak = Streak(g, answered, today)
+	ev.Streak = Streak(g, answered, off, today)
 	return ev
 }
 
 // Streak counts how many days in a row up to today someone answered in g, given the days they
 // answered (UTC midnights). Not having answered yet today doesn't break it, and neither do the
-// guild's non-working days.
-func Streak(g Guild, answered map[time.Time]bool, today time.Time) int {
+// guild's non-working days or the days off their vacations cover.
+func Streak(g Guild, answered map[time.Time]bool, off Vacations, today time.Time) int {
 	n := 0
 	d := TruncateDay(today)
 	if !answered[d] {
 		d = d.AddDate(0, 0, -1)
 	}
-	for ; answered[d] || !g.Settings.IsWorkingDay(d); d = d.AddDate(0, 0, -1) {
+	for ; answered[d] || !g.Settings.IsWorkingDay(d) || off.Covers(d); d = d.AddDate(0, 0, -1) {
 		if answered[d] {
 			n++
 		}

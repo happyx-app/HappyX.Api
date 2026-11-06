@@ -44,7 +44,7 @@ func TestMemberStreaksMatchDomain(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if n := domain.Streak(g, answered, today); n > 0 {
+		if n := domain.Streak(g, answered, nil, today); n > 0 {
 			want[user] = n
 		}
 	}

@@ -196,7 +196,7 @@ func (r moods) Streaks(_ context.Context, guildID string, _ domain.Weekdays, fro
 		}
 	}
 	for id, days := range answered {
-		if n := domain.Streak(d.guild, days, today); n > 0 {
+		if n := domain.Streak(d.guild, days, nil, today); n > 0 {
 			out[id] = n
 		}
 	}

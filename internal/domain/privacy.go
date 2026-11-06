@@ -15,6 +15,8 @@ type UserData struct {
 	// ReportsFor are the guilds whose reports the person receives as the registered admin.
 	ReportsFor []Guild
 	Guilds     []MemberData
+	// Vacations are the person's own and the ones admins set for them, past ones included.
+	Vacations []Vacation
 }
 
 // MemberData is everything HappyX keeps about one person in one guild.

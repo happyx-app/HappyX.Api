@@ -140,9 +140,9 @@ type PrivacyRepository interface {
 	// left that are still kept.
 	UserData(ctx context.Context, userID string) (domain.UserData, error)
 	// EraseUser deletes userID's answers, kudos given and received, everything they did in
-	// «Who's who?» and their drawings on the team canvas, in every guild. Their member rows stay,
-	// paused and without a username, so the bot doesn't send them the survey again; Discord IDs
-	// are kept only for that.
+	// «Who's who?», their drawings on the team canvas and their vacations, in every guild. Their
+	// member rows stay, paused and without a username, so the bot doesn't send them the survey
+	// again; Discord IDs are kept only for that.
 	EraseUser(ctx context.Context, userID string) error
 	// GuildData returns everything stored about the guild.
 	GuildData(ctx context.Context, guildID string) (domain.GuildData, error)
@@ -165,6 +165,30 @@ type CanvasRepository interface {
 	DeleteDrawing(ctx context.Context, guildID, drawingID, authorID string) (int, int64, error)
 	// Clear deletes every stroke in the guild's canvas and returns the new version.
 	Clear(ctx context.Context, guildID string) (int64, error)
+}
+
+type VacationRepository interface {
+	// Set stores v, replacing the person's vacation of the same kind: their own when
+	// v.GuildDiscordID is "", otherwise the one set in that guild. notify marks it for the bot to
+	// tell the person by DM.
+	Set(ctx context.Context, v domain.Vacation, notify bool) (domain.Vacation, error)
+	// Delete removes the person's own vacation (guildID "") or the one set in guildID.
+	// domain.ErrNotFound when there is none.
+	Delete(ctx context.Context, userID, guildID string) error
+	// ForUser returns the person's vacations that end on since or later: their own and the ones
+	// set in any guild, own first.
+	ForUser(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error)
+	// ForGuild returns the vacations that apply to the guild's members still in the server, their
+	// own and the ones set in this guild, that end on since or later, with the members' usernames,
+	// by start date.
+	ForGuild(ctx context.Context, guildID string, since time.Time) ([]domain.Vacation, error)
+	// PendingNotices returns vacations an admin set, in active guilds, that the bot has yet to tell
+	// the person about.
+	PendingNotices(ctx context.Context) ([]domain.Vacation, error)
+	// DoneNotice records the bot told the person. domain.ErrNotFound when nothing was pending.
+	DoneNotice(ctx context.Context, id int64) error
+	// DeleteEndedBefore deletes the vacations that ended before the day and returns how many.
+	DeleteEndedBefore(ctx context.Context, before time.Time) (int, error)
 }
 
 // Clock lets tests control "today".

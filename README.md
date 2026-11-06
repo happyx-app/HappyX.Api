@@ -185,8 +185,12 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
 | GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
+| GET | `/web/me/vacations` | `{own, set_by_admins}`: the user's own vacation (`{from, to}`, `null` if none) and the ones admins set for them (each with `discord_guild_id` and `guild_name`), that haven't ended. See «Vacations» |
+| PUT | `/web/me/vacation` | `from`, `to` (`YYYY-MM-DD`): sets the user's own vacation, for every server, replacing the one they had. Needs `Content-Type: application/json` |
+| DELETE | `/web/me/vacation` | removes the user's own vacation. Needs `Content-Type: application/json`. 204; 404 if none |
+| DELETE | `/web/guilds/{guildID}/me/vacation` | removes the vacation an admin set for the user in that server. Needs `Content-Type: application/json`. 204; 404 if none |
 | GET | `/web/guilds/{guildID}/report` | same query and body as the `/v1` report |
-| GET | `/web/guilds/{guildID}/health` | `audience` (members who would get the survey now: opted in, in the server, allowed by the survey roles), `opted_out`, and `last_survey` (`day`, `recipients`, `failed`; `null` if none in the last 14 days) |
+| GET | `/web/guilds/{guildID}/health` | `audience` (members who would get the survey now: opted in, in the server, allowed by the survey roles, not on vacation), `opted_out`, `on_vacation`, and `last_survey` (`day`, `recipients`, `failed`; `null` if none in the last 14 days) |
 | GET | `/web/guilds/{guildID}/game` | `{current, previous}`: this week's round and last week's, as the member sees them (authors only once finished). 404 unless games are on and the user takes part |
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
@@ -199,16 +203,32 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/guilds/{guildID}/roles` | the server's Discord roles (`id`, `name`, `color`, `position`, highest first), for the settings' pickers. Needs **manage** |
 | GET | `/web/guilds/{guildID}/channels` | the server's text and announcement channels (`id`, `name`, `category`, `position`, `can_post`), in Discord's order, for the kudos channel picker. Needs **manage** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |
+| GET | `/web/guilds/{guildID}/vacations` | `{vacations, members}`: the vacations of members still in the server that haven't ended (`discord_user_id`, `username`, `from`, `to`, `set_here`: `false` for the member's own, which admins can't change), by start date, and the `members` who can be given one (`discord_user_id`, `username`). Needs **manage** |
+| PUT | `/web/guilds/{guildID}/vacations/{userID}` | `from`, `to`: sets the member's vacation in this server, replacing the one set here before; the bot tells them by DM. Needs **manage** and `Content-Type: application/json` |
+| DELETE | `/web/guilds/{guildID}/vacations/{userID}` | removes the vacation set for the member in this server. Needs **manage** and `Content-Type: application/json`. 204; 404 if none |
 | PUT | `/web/guilds/{guildID}/access` | `admin_discord_user_id` and the full `grants` list (at most 50). The admin and granted users must be in the server, roles must exist. Needs **owner** and `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, canvas, dispatches); the bot then leaves it. Needs **owner** and `Content-Type: application/json`. 204 |
 | GET | `/web/guilds/{guildID}/export` | downloads the server's data as JSON (`happyx-server-data`): settings, members, survey answers, kudos, «Who's who?» rounds and the team canvas with who drew each stroke. Needs **owner**, and the same anonymity as the dashboard (see below) |
-| GET | `/web/me/data` | downloads everything HappyX keeps about the logged-in user as JSON (`happyx-personal-data`): per server their membership, answers, kudos given and received, game answers, guesses and proposals, drawings on the team canvas, and which servers' reports they receive |
-| DELETE | `/web/me/data` | `confirm_name` (the user's username): erases the user's answers, kudos (given and received), game activity and drawings in every server, and pauses the survey for them everywhere. Their member rows stay, without a username, so the bot doesn't sign them up again. Needs `Content-Type: application/json`. 204 |
+| GET | `/web/me/data` | downloads everything HappyX keeps about the logged-in user as JSON (`happyx-personal-data`): per server their membership, answers, kudos given and received, game answers, guesses and proposals, drawings on the team canvas, and which servers' reports they receive; and their `vacations` |
+| DELETE | `/web/me/data` | `confirm_name` (the user's username): erases the user's answers, kudos (given and received), game activity, drawings and vacations in every server, and pauses the survey for them everywhere. Their member rows stay, without a username, so the bot doesn't sign them up again. Needs `Content-Type: application/json`. 204 |
 
 Any logged-in user can read their own answers (`/web/me/moods`), whether or not they administer
 the server: they are the author, so anonymity doesn't hide anything from them. The streak counts
 consecutive days answered up to today in the server's timezone; not having answered yet today
-doesn't break it.
+doesn't break it, and neither do non-working days or the user's vacations.
+
+### Vacations
+
+On a vacation's days (both ends included, at most 90, starting at most a year ahead) the person
+gets neither the survey nor the game: `/v1/guilds/{guildID}/members?for=survey` and `?for=game`
+leave them out, so the bot doesn't count them as recipients and the participation rate doesn't
+drop. Those days don't break their streak, and they can still answer if they want to.
+
+A person sets their own vacation on the web or with `/happyx vacation`; it applies in every
+server they are in. Someone with **manage** on a server can set one for a member there, in case
+they forgot; it applies in that server only, the bot tells the member by DM, and the member can
+remove it. Both kinds apply together. Vacations are kept 400 days after they end, the stretch over
+which streaks are counted, and then deleted; erasing your data deletes them at once.
 
 
 Personal data (GDPR): every logged-in user can download (`/web/me/data`) and erase
@@ -283,10 +303,15 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | DELETE | `/v1/guilds/{guildID}` | | bot removed: stops surveys and hides the server from the dashboard. Data is kept 30 days in case the bot is added back, then deleted |
 | GET | `/v1/removals` | | Discord IDs of the servers deleted from the dashboard that the bot must leave |
 | DELETE | `/v1/removals/{guildID}` | | the bot has left the server. Until then `POST /v1/guilds` for it answers 410 |
-| GET | `/v1/guilds/{guildID}/members` | | active members; `?for=survey` keeps only those the survey roles send the survey to, `?for=game` those the game roles let play; `?with=streak` adds each one's `streak` (days in a row answering, omitted when 0); with `?for=survey` each member who hasn't answered in the guild since the privacy policy's date (`usecase.PrivacyPolicyDate`) has `policy_pending: true`, so the bot links the policy in their survey |
+| GET | `/v1/guilds/{guildID}/members` | | active members; `?for=survey` keeps only those the survey roles send the survey to, `?for=game` those the game roles let play (both leave out members on vacation today); `?with=streak` adds each one's `streak` (days in a row answering, omitted when 0); with `?for=survey` each member who hasn't answered in the guild since the privacy policy's date (`usecase.PrivacyPolicyDate`) has `policy_pending: true`, so the bot links the policy in their survey |
 | PUT | `/v1/guilds/{guildID}/members` | `members`: up to 1000 `{discord_user_id, username, role_ids}` | bulk sync in one transaction: creates or refreshes each member's name and roles, keeping everyone's opt-in state |
 | PUT | `/v1/guilds/{guildID}/members/{userID}` | `username`, `active` (optional), `role_ids` (optional) | create or rename; `active` omitted keeps an existing member's opt-in state, `true` opts in; `role_ids` omitted keeps their Discord roles |
 | DELETE | `/v1/guilds/{guildID}/members/{userID}` | | opt out; `?left=true` when they left the server, which also ends their dashboard access |
+| GET | `/v1/guilds/{guildID}/members/{userID}/vacations` | | the vacations that apply to the member in the server and haven't ended: `[{from, to, discord_guild_id, set_by_admin}]`, `discord_guild_id` omitted for their own (every server). See «Vacations» |
+| PUT | `/v1/guilds/{guildID}/members/{userID}/vacation` | `from`, `to` (`YYYY-MM-DD`) | `/happyx vacation`: sets the member's own vacation, for every server, with today in this server's timezone |
+| DELETE | `/v1/guilds/{guildID}/members/{userID}/vacations` | | ends the member's own vacation and the one set for them in this server (`/happyx resume`). 204, also when there was none |
+| GET | `/v1/vacation-notices` | | vacations an admin set from the dashboard that the bot has to tell the member about by DM: `[{id, discord_guild_id, discord_user_id, set_by_discord_user_id, from, to}]`, at most 100 |
+| DELETE | `/v1/vacation-notices/{id}` | | the bot told the member (or couldn't: DMs closed). 204; 404 if it wasn't pending |
 | GET | `/v1/guilds/{guildID}/members/{userID}/access` | | `{level}`: `none`, `view`, `manage` or `owner`, for the bot's admin commands. `?discord_admin=true` when Discord says they own the server or are an Administrator |
 | PUT | `/v1/guilds/{guildID}/roles` | `roles`: `[{id, name, color, position}]` | replaces the server's roles; grants to roles that are gone are dropped. 204 |
 | PUT | `/v1/guilds/{guildID}/channels` | `channels`: up to 500 `[{id, name, category, position, can_post}]` | replaces the server's text and announcement channels (`position` is the order in Discord's list, `can_post` whether the bot may post there); a deleted kudos channel is cleared. 204 |

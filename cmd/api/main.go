@@ -51,7 +51,7 @@ func run(log *slog.Logger) error {
 		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool), postgres.NewGameRepo(pool), postgres.NewAccessRepo(pool),
 		postgres.NewPrivacyRepo(pool),
 		time.Now,
-	).WithCanvas(postgres.NewCanvasRepo(pool))
+	).WithCanvas(postgres.NewCanvasRepo(pool)).WithVacations(postgres.NewVacationRepo(pool))
 	api := httpapi.NewServer(svc, cfg.ServiceKeyHashes, log)
 	if w := cfg.Web; w != nil {
 		api.WithWeb(httpapi.Web{
@@ -119,7 +119,7 @@ func run(log *slog.Logger) error {
 }
 
 // deleteLeftGuilds deletes, every hour, the servers the bot left more than
-// usecase.LeftGuildRetention ago.
+// usecase.LeftGuildRetention ago, and the vacations that no longer matter.
 func deleteLeftGuilds(ctx context.Context, svc *usecase.Service, log *slog.Logger) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
@@ -129,6 +129,11 @@ func deleteLeftGuilds(ctx context.Context, svc *usecase.Service, log *slog.Logge
 			log.Error("delete left guilds", "err", err)
 		} else if len(ids) > 0 {
 			log.Info("deleted guilds the bot left", "guilds", ids)
+		}
+		if n, err := svc.DeleteOldVacations(ctx); err != nil {
+			log.Error("delete old vacations", "err", err)
+		} else if n > 0 {
+			log.Info("deleted old vacations", "count", n)
 		}
 		select {
 		case <-ctx.Done():
