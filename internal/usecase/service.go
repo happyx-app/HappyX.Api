@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -579,6 +580,9 @@ func (s *Service) GuildHealth(ctx context.Context, g domain.Guild) (domain.Guild
 type GuildAccess struct {
 	Guild domain.Guild
 	Level domain.AccessLevel
+	// AdminUsername names the main admin for viewers who aren't owners, so the web can say whom
+	// to ask for permission. Empty for owners, or when the admin isn't a known member.
+	AdminUsername string
 }
 
 // VisibleGuilds lists the guilds the viewer may see on the dashboard, with their access level.
@@ -596,9 +600,18 @@ func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]GuildAc
 		if err != nil {
 			return nil, err
 		}
-		if level >= domain.AccessView {
-			out = append(out, GuildAccess{g, level})
+		if level < domain.AccessView {
+			continue
 		}
+		ga := GuildAccess{Guild: g, Level: level}
+		if level < domain.AccessOwner && g.AdminDiscordID != "" {
+			m, err := s.members.Get(ctx, g.DiscordID, g.AdminDiscordID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return nil, err
+			}
+			ga.AdminUsername = m.Username
+		}
+		out = append(out, ga)
 	}
 	return out, nil
 }
