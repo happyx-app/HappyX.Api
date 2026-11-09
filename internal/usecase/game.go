@@ -216,8 +216,8 @@ type GameBoard struct {
 	History []GameHistoryRound
 }
 
-// gameHistoryWeeks is how far back the game page's history goes: about half a year.
-const gameHistoryWeeks = 26
+// gameHistoryWeeks is how far back the game page's history goes: a year, like «My evolution».
+const gameHistoryWeeks = 52
 
 // GameHistoryRound is a finished round as the history shows it: who wrote what, how the team did
 // as a whole and how the viewer did. It carries no ranking: nobody's score but the viewer's.
@@ -276,20 +276,26 @@ func (s *Service) gameHistory(ctx context.Context, v domain.Viewer, g domain.Gui
 		return nil, err
 	}
 	out := make([]GameHistoryRound, 0, len(rounds))
+	if len(rounds) == 0 {
+		return out, nil
+	}
+	// Three queries whatever the number of rounds.
+	allAnswers, err := s.games.ListAnswersBetween(ctx, g.DiscordID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	allGuesses, err := s.games.ListGuessesBetween(ctx, g.DiscordID, from, to)
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rounds {
-		answers, err := s.games.ListAnswers(ctx, g.DiscordID, r.Week)
-		if err != nil {
-			return nil, err
-		}
+		answers := allAnswers[domain.TruncateDay(r.Week)]
 		h := GameHistoryRound{Round: r, Count: len(answers), Enough: len(answers) >= domain.MinGameAnswers, Answers: []domain.GameAnswer{}, MyGuessed: map[string]string{}}
 		if !h.Enough {
 			out = append(out, h)
 			continue
 		}
-		guesses, err := s.games.ListGuesses(ctx, g.DiscordID, r.Week)
-		if err != nil {
-			return nil, err
-		}
+		guesses := allGuesses[domain.TruncateDay(r.Week)]
 		h.Answers, h.Right = answers, map[string]int{}
 		author := map[string]string{}
 		for _, a := range answers {

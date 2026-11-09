@@ -304,6 +304,24 @@ func (r games) ListGuesses(_ context.Context, guildID string, week time.Time) ([
 	return append([]domain.GameGuess(nil), r.s.current().guesses[domain.TruncateDay(week)]...), nil
 }
 
+func (r games) ListAnswersBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameAnswer, error) {
+	out := map[time.Time][]domain.GameAnswer{}
+	rounds, _ := r.ListRounds(ctx, guildID, from, to)
+	for _, rd := range rounds {
+		out[rd.Week], _ = r.ListAnswers(ctx, guildID, rd.Week)
+	}
+	return out, nil
+}
+
+func (r games) ListGuessesBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameGuess, error) {
+	out := map[time.Time][]domain.GameGuess{}
+	rounds, _ := r.ListRounds(ctx, guildID, from, to)
+	for _, rd := range rounds {
+		out[rd.Week], _ = r.ListGuesses(ctx, guildID, rd.Week)
+	}
+	return out, nil
+}
+
 func (r games) ListProposals(_ context.Context, guildID string, week time.Time) ([]domain.GameProposal, error) {
 	if guildID != GuildID {
 		return nil, nil

@@ -685,25 +685,30 @@ func (r *GameRepo) UpsertAnswer(ctx context.Context, a domain.GameAnswer) (domai
 }
 
 func (r *GameRepo) ListAnswers(ctx context.Context, guildID string, week time.Time) ([]domain.GameAnswer, error) {
+	byWeek, err := r.ListAnswersBetween(ctx, guildID, week, week)
+	return byWeek[domain.TruncateDay(week)], err
+}
+
+func (r *GameRepo) ListAnswersBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameAnswer, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT `+gameAnswerCols+`
 		FROM game_answers a
 		JOIN game_rounds rd ON rd.id = a.round_id
 		JOIN guilds g ON g.id = rd.guild_id
 		JOIN members m ON m.id = a.member_id AND m.guild_id = g.id
-		WHERE g.discord_id = $1 AND rd.week = $2 AND m.active
-		ORDER BY a.ref`, guildID, week)
+		WHERE g.discord_id = $1 AND rd.week BETWEEN $2 AND $3 AND m.active
+		ORDER BY rd.week, a.ref`, guildID, from, to)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.GameAnswer
+	out := map[time.Time][]domain.GameAnswer{}
 	for rows.Next() {
 		a, err := scanGameAnswer(rows)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, a)
+		out[a.Week] = append(out[a.Week], a)
 	}
 	return out, rows.Err()
 }
@@ -747,27 +752,34 @@ func (r *GameRepo) ReplaceGuesses(ctx context.Context, guildID string, week time
 }
 
 func (r *GameRepo) ListGuesses(ctx context.Context, guildID string, week time.Time) ([]domain.GameGuess, error) {
+	byWeek, err := r.ListGuessesBetween(ctx, guildID, week, week)
+	return byWeek[domain.TruncateDay(week)], err
+}
+
+func (r *GameRepo) ListGuessesBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameGuess, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT gm.discord_id, a.ref::text, tm.discord_id
+		SELECT rd.week, gm.discord_id, a.ref::text, tm.discord_id
 		FROM game_guesses gs
 		JOIN game_answers a ON a.id = gs.answer_id
 		JOIN game_rounds rd ON rd.id = a.round_id
 		JOIN guilds g ON g.id = rd.guild_id
 		JOIN members gm ON gm.id = gs.guesser_member_id AND gm.guild_id = g.id
 		JOIN members tm ON tm.id = gs.guessed_member_id AND tm.guild_id = g.id
-		WHERE g.discord_id = $1 AND rd.week = $2 AND gm.active
-		ORDER BY gs.created_at, a.id`, guildID, week)
+		WHERE g.discord_id = $1 AND rd.week BETWEEN $2 AND $3 AND gm.active
+		ORDER BY rd.week, gs.created_at, a.id`, guildID, from, to)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.GameGuess
+	out := map[time.Time][]domain.GameGuess{}
 	for rows.Next() {
+		var week time.Time
 		var gs domain.GameGuess
-		if err := rows.Scan(&gs.GuesserDiscordID, &gs.AnswerID, &gs.GuessedDiscordID); err != nil {
+		if err := rows.Scan(&week, &gs.GuesserDiscordID, &gs.AnswerID, &gs.GuessedDiscordID); err != nil {
 			return nil, err
 		}
-		out = append(out, gs)
+		week = domain.TruncateDay(week)
+		out[week] = append(out[week], gs)
 	}
 	return out, rows.Err()
 }

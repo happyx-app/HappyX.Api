@@ -132,6 +132,10 @@ type GameRepository interface {
 	ReplaceGuesses(ctx context.Context, guildID string, week time.Time, guesserID string, guesses []domain.GameGuess) error
 	// ListGuesses returns the round's guesses by members still taking part.
 	ListGuesses(ctx context.Context, guildID string, week time.Time) ([]domain.GameGuess, error)
+	// ListAnswersBetween and ListGuessesBetween are ListAnswers and ListGuesses for every round
+	// whose week is between from and to, both included, keyed by week.
+	ListAnswersBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameAnswer, error)
+	ListGuessesBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameGuess, error)
 	// UpsertProposal stores the member's question for p.Week, replacing an earlier one.
 	UpsertProposal(ctx context.Context, p domain.GameProposal) (domain.GameProposal, error)
 	// ListProposals returns the questions proposed for week by members still taking part.
