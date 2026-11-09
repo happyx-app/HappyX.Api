@@ -220,8 +220,93 @@ func (s *Server) webGame(w http.ResponseWriter, r *http.Request, v domain.Viewer
 		Current        *gameRoundViewDTO `json:"current"`
 		Previous       *gameRoundViewDTO `json:"previous"`
 		Proposal       proposalDTO       `json:"proposal"`
+		History        []gameHistoryDTO  `json:"history"`
 	}{b.Guild.DiscordID, b.Guild.Name, toGameRoundViewDTO(b.Current), toGameRoundViewDTO(b.Previous),
-		proposalDTO{b.Proposal.Open, b.Proposal.Week.Format(dateLayout), b.Proposal.Mine, b.Proposal.Count}})
+		proposalDTO{b.Proposal.Open, b.Proposal.Week.Format(dateLayout), b.Proposal.Mine, b.Proposal.Count}, toGameHistoryDTOs(b.History)})
+}
+
+type gameMineDTO struct {
+	Correct int `json:"correct"`
+	Guesses int `json:"guesses"`
+}
+
+// gameHistoryDTO is a finished round before last week's: the team's total, the viewer's own
+// score and guesses, and who wrote what. Nobody else's score is in it.
+type gameHistoryDTO struct {
+	Week       string            `json:"week"`
+	LastDay    string            `json:"last_day"`
+	Question   string            `json:"question"`
+	ProposedBy *gamePlayerDTO    `json:"proposed_by,omitempty"`
+	Played     bool              `json:"played"`
+	Count      int               `json:"answer_count"`
+	MinAnswers int               `json:"min_answers"`
+	Players    int               `json:"players"`
+	Guesses    int               `json:"guesses"`
+	Correct    int               `json:"correct"`
+	Mine       *gameMineDTO      `json:"mine,omitempty"`
+	MyGuesses  map[string]string `json:"my_guesses"`
+	Answers    []gameAnswerDTO   `json:"answers"`
+}
+
+func toGameHistoryDTOs(hs []usecase.GameHistoryRound) []gameHistoryDTO {
+	out := make([]gameHistoryDTO, 0, len(hs))
+	for _, h := range hs {
+		r := h.Round
+		d := gameHistoryDTO{
+			Week: r.Week.Format(dateLayout), LastDay: r.LastDay().Format(dateLayout), Question: r.Question,
+			Played: h.Enough, Count: h.Count, MinAnswers: domain.MinGameAnswers, Players: h.Count,
+			Guesses: h.Guesses, Correct: h.Correct, MyGuesses: h.MyGuessed, Answers: []gameAnswerDTO{},
+		}
+		if r.ProposerDiscordID != "" {
+			d.ProposedBy = &gamePlayerDTO{r.ProposerDiscordID, r.ProposerUsername}
+		}
+		if h.MyGuesses > 0 {
+			d.Mine = &gameMineDTO{h.MyCorrect, h.MyGuesses}
+		}
+		for _, a := range h.Answers {
+			n := h.Right[a.ID]
+			d.Answers = append(d.Answers, gameAnswerDTO{ID: a.ID, Answer: a.Text, Mine: a.ID == h.MyAnswerID, DiscordID: a.MemberDiscordID, Username: a.Username, Right: &n})
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// webMyGames is the viewer's own «Who's who?» score per server, for ?from=&to= (YYYY-MM-DD),
+// by default the last 30 days: one entry per finished round they guessed in.
+func (s *Server) webMyGames(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	from, to, ok := s.dayRange(w, r)
+	if !ok {
+		return
+	}
+	gs, err := s.svc.MyGames(r.Context(), v, from, to)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	type weekDTO struct {
+		Week    string `json:"week"`
+		Correct int    `json:"correct"`
+		Guesses int    `json:"guesses"`
+	}
+	type guildDTO struct {
+		DiscordGuildID string    `json:"discord_guild_id"`
+		Name           string    `json:"name"`
+		Weeks          []weekDTO `json:"weeks"`
+	}
+	out := struct {
+		From   string     `json:"from"`
+		To     string     `json:"to"`
+		Guilds []guildDTO `json:"guilds"`
+	}{from.Format(dateLayout), to.Format(dateLayout), []guildDTO{}}
+	for _, g := range gs {
+		d := guildDTO{g.Guild.DiscordID, g.Guild.Name, []weekDTO{}}
+		for _, wk := range g.Weeks {
+			d.Weeks = append(d.Weeks, weekDTO{wk.Week.Format(dateLayout), wk.Correct, wk.Guesses})
+		}
+		out.Guilds = append(out.Guilds, d)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // webAnswerGame answers this week's question from the dashboard, for whoever missed the DM.

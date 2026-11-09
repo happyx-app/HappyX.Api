@@ -275,6 +275,21 @@ func (r games) GetRound(_ context.Context, guildID string, week time.Time) (doma
 	return domain.GameRound{}, domain.ErrNotFound
 }
 
+func (r games) ListRounds(_ context.Context, guildID string, from, to time.Time) ([]domain.GameRound, error) {
+	if guildID != GuildID {
+		return nil, nil
+	}
+	from, to = domain.TruncateDay(from), domain.TruncateDay(to)
+	var out []domain.GameRound
+	for w, round := range r.s.current().rounds {
+		if !w.Before(from) && !w.After(to) {
+			out = append(out, round)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Week.After(out[j].Week) })
+	return out, nil
+}
+
 func (r games) ListAnswers(_ context.Context, guildID string, week time.Time) ([]domain.GameAnswer, error) {
 	if guildID != GuildID {
 		return nil, nil

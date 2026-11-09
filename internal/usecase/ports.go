@@ -120,6 +120,9 @@ type GameRepository interface {
 	// r.ProposerDiscordID, when set, names the member whose proposal it is.
 	CreateRound(ctx context.Context, r domain.GameRound) (domain.GameRound, error)
 	GetRound(ctx context.Context, guildID string, week time.Time) (domain.GameRound, error)
+	// ListRounds returns the guild's rounds whose week is between from and to, both included,
+	// newest first.
+	ListRounds(ctx context.Context, guildID string, from, to time.Time) ([]domain.GameRound, error)
 	// UpsertAnswer stores the member's answer to the round, replacing an earlier one.
 	UpsertAnswer(ctx context.Context, a domain.GameAnswer) (domain.GameAnswer, error)
 	// ListAnswers returns the round's answers by members still taking part, in a random but

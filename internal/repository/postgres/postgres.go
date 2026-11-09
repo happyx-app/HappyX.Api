@@ -629,6 +629,28 @@ func (r *GameRepo) GetRound(ctx context.Context, guildID string, week time.Time)
 		WHERE g.discord_id = $1 AND rd.week = $2`, guildID, week))
 }
 
+func (r *GameRepo) ListRounds(ctx context.Context, guildID string, from, to time.Time) ([]domain.GameRound, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT `+gameRoundCols+`
+		FROM game_rounds rd JOIN guilds g ON g.id = rd.guild_id
+		LEFT JOIN members m ON m.id = rd.proposer_member_id
+		WHERE g.discord_id = $1 AND rd.week BETWEEN $2 AND $3
+		ORDER BY rd.week DESC`, guildID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.GameRound
+	for rows.Next() {
+		rd, err := scanGameRound(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rd)
+	}
+	return out, rows.Err()
+}
+
 const gameAnswerCols = `a.ref::text, g.discord_id, rd.week, m.discord_id, m.username, a.answer, a.created_at, a.updated_at`
 
 func scanGameAnswer(row pgx.Row) (domain.GameAnswer, error) {

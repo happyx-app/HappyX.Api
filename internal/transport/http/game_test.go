@@ -167,4 +167,54 @@ func TestGameFlow(t *testing.T) {
 	if want := map[bool]string{true: memberID, false: p2}[mine]; by["discord_user_id"] != want {
 		t.Fatalf("proposer after the round: %v, want %s", board["previous"], want)
 	}
+
+	// The first round is now in the history: the team's total and only the viewer's own score
+	// and guesses, never anyone else's.
+	hist := board["history"].([]any)
+	if len(hist) != 1 {
+		t.Fatalf("history: %v", hist)
+	}
+	h := hist[0].(map[string]any)
+	if h["week"] != "2026-10-19" || h["last_day"] != "2026-10-25" || h["played"] != true || h["players"].(float64) != 3 ||
+		h["guesses"].(float64) != 2 || h["correct"].(float64) != 1 || len(h["answers"].([]any)) != 3 || h["ranking"] != nil {
+		t.Fatalf("history round: %v", h)
+	}
+	if mine := h["mine"].(map[string]any); mine["correct"].(float64) != 1 || mine["guesses"].(float64) != 2 || len(h["my_guesses"].(map[string]any)) != 2 {
+		t.Fatalf("my score in the history: %v", h)
+	}
+	for _, a := range h["answers"].([]any) {
+		a := a.(map[string]any)
+		if a["username"] == nil || a["right"] == nil || a["mine"] != (a["answer"] == "Bombera") {
+			t.Fatalf("history answer: %v", a)
+		}
+	}
+	// p2 didn't guess: same team total, no score of their own.
+	other := newWebClient(t)
+	login(t, srv, other, "user:"+p2)
+	res, b2 := get(t, other, srv.URL+"/web/guilds/"+guildA+"/game")
+	if res.StatusCode != 200 {
+		t.Fatalf("p2's game page: %d %v", res.StatusCode, b2)
+	}
+	if h2 := b2["history"].([]any)[0].(map[string]any); h2["mine"] != nil || len(h2["my_guesses"].(map[string]any)) != 0 || h2["correct"].(float64) != 1 {
+		t.Fatalf("someone else's history: %v", h2)
+	}
+
+	// «My evolution»: the viewer's own score per server.
+	var my map[string]any
+	if res, _ := get(t, newWebClient(t), srv.URL+"/web/me/games"); res.StatusCode != 401 {
+		t.Fatalf("my games without login: %d", res.StatusCode)
+	}
+	if res, _ := get(t, m, srv.URL+"/web/me/games?from=2026-11-02&to=2026-10-01"); res.StatusCode != 400 {
+		t.Fatalf("backwards range: %d", res.StatusCode)
+	}
+	res, my = get(t, m, srv.URL+"/web/me/games?from=2026-10-01&to=2026-11-02")
+	gs := my["guilds"].([]any)
+	if res.StatusCode != 200 || len(gs) != 1 {
+		t.Fatalf("my games: %d %v", res.StatusCode, my)
+	}
+	// The second round is finished too (last week's), but the member didn't guess in it.
+	weeks := gs[0].(map[string]any)["weeks"].([]any)
+	if len(weeks) != 1 || weeks[0].(map[string]any)["week"] != "2026-10-19" || weeks[0].(map[string]any)["correct"].(float64) != 1 {
+		t.Fatalf("my game weeks: %v", weeks)
+	}
 }
