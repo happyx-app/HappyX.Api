@@ -59,6 +59,12 @@ func TestDemo(t *testing.T) {
 	if res, _ := get(t, c, srv.URL+"/web/demo/es/me/moods?from=2026-10-01&to=2026-10-22"); res.StatusCode != 200 {
 		t.Fatalf("moods: %d", res.StatusCode)
 	}
+	if res, games := get(t, c, srv.URL+"/web/demo/es/me/games?from=2026-08-01&to=2026-10-22"); res.StatusCode != 200 || len(games["guilds"].([]any)) != 1 {
+		t.Fatalf("my games: %d %v", res.StatusCode, games)
+	}
+	if _, board := get(t, c, base+"/game"); len(board["history"].([]any)) == 0 {
+		t.Fatalf("the demo game has no history: %v", board["history"])
+	}
 	// Other servers don't exist in the demo, and the real routes still want a login.
 	if res, _ := get(t, c, srv.URL+"/web/demo/es/guilds/100000000000000002/report"); res.StatusCode != 404 {
 		t.Fatalf("other server: %d", res.StatusCode)

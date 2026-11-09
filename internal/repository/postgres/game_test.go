@@ -164,4 +164,79 @@ func TestGameRound(t *testing.T) {
 	if gs, _ := svc.GameGuilds(ctx, domain.Viewer{DiscordID: user4}); len(gs) != 0 {
 		t.Fatalf("paused member gets games: %v", gs)
 	}
+
+	// Last week's round is in Previous, not in the history yet; nor in «My evolution».
+	if len(b.History) != 0 {
+		t.Fatalf("history with only last week's round: %+v", b.History)
+	}
+	// A round that only one person answered.
+	if _, err := svc.StartGameRound(ctx, guildA, time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC), "¿Playa o montaña?"); err != nil {
+		t.Fatal(err)
+	}
+	if err := answer(guildA, user1, "Montaña"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A week on, the first round moves to the history.
+	now = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	b, err = svc.GameBoard(ctx, v1, guildA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.History) != 1 || !b.History[0].Round.Week.Equal(time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("history on 2 Nov: %+v", b.History)
+	}
+	if b.Previous == nil || b.Previous.Enough {
+		t.Fatalf("last week's round with one answer: %+v", b.Previous)
+	}
+	// Another week on, both rounds are in the history, newest first.
+	now = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	b, err = svc.GameBoard(ctx, v1, guildA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.History) != 2 {
+		t.Fatalf("history on 9 Nov: %+v", b.History)
+	}
+	notPlayed, played := b.History[0], b.History[1]
+	if notPlayed.Enough || notPlayed.Count != 1 || len(notPlayed.Answers) != 0 || notPlayed.Guesses != 0 {
+		t.Fatalf("round with one answer: %+v", notPlayed)
+	}
+	// user1 got one of two right; with user2's two right ones, the team got three of four.
+	if !played.Enough || played.Count != 3 || len(played.Answers) != 3 || played.Guesses != 4 || played.Correct != 3 ||
+		played.MyGuesses != 2 || played.MyCorrect != 1 || played.MyGuessed[ids["Pastelera"]] != user2 || played.MyAnswerID != ids["Bombera"] {
+		t.Fatalf("played round: %+v", played)
+	}
+	if played.Right[ids["Bombera"]] != 1 || played.Right[ids["Pastelera"]] != 1 {
+		t.Fatalf("history right guesses: %v", played.Right)
+	}
+	// user3 didn't guess: no score of their own, the same team total.
+	b3, err := svc.GameBoard(ctx, domain.Viewer{DiscordID: user3}, guildA)
+	if err != nil || len(b3.History) != 2 || b3.History[1].MyGuesses != 0 || len(b3.History[1].MyGuessed) != 0 || b3.History[1].Correct != 3 {
+		t.Fatalf("user3's history: %+v %v", b3.History, err)
+	}
+
+	// «My evolution»: only finished rounds the viewer guessed in, per guild, and no other guild's.
+	mine, err := svc.MyGames(ctx, v1, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(mine) != 2 {
+		t.Fatalf("my games: %+v %v", mine, err)
+	}
+	for _, m := range mine {
+		switch m.Guild.DiscordID {
+		case guildA:
+			if len(m.Weeks) != 1 || m.Weeks[0].Correct != 1 || m.Weeks[0].Guesses != 2 {
+				t.Fatalf("my games in A: %+v", m.Weeks)
+			}
+		case guildB:
+			if len(m.Weeks) != 0 {
+				t.Fatalf("my games in B: %+v", m.Weeks)
+			}
+		}
+	}
+	if mine, _ := svc.MyGames(ctx, v1, time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)); len(mine[0].Weeks)+len(mine[1].Weeks) != 0 {
+		t.Fatalf("a range that starts after the round: %+v", mine)
+	}
+	if _, err := svc.MyGames(ctx, v1, time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("backwards range: %v", err)
+	}
 }

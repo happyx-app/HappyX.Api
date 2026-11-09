@@ -275,6 +275,21 @@ func (r games) GetRound(_ context.Context, guildID string, week time.Time) (doma
 	return domain.GameRound{}, domain.ErrNotFound
 }
 
+func (r games) ListRounds(_ context.Context, guildID string, from, to time.Time) ([]domain.GameRound, error) {
+	if guildID != GuildID {
+		return nil, nil
+	}
+	from, to = domain.TruncateDay(from), domain.TruncateDay(to)
+	var out []domain.GameRound
+	for w, round := range r.s.current().rounds {
+		if !w.Before(from) && !w.After(to) {
+			out = append(out, round)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Week.After(out[j].Week) })
+	return out, nil
+}
+
 func (r games) ListAnswers(_ context.Context, guildID string, week time.Time) ([]domain.GameAnswer, error) {
 	if guildID != GuildID {
 		return nil, nil
@@ -287,6 +302,24 @@ func (r games) ListGuesses(_ context.Context, guildID string, week time.Time) ([
 		return nil, nil
 	}
 	return append([]domain.GameGuess(nil), r.s.current().guesses[domain.TruncateDay(week)]...), nil
+}
+
+func (r games) ListAnswersBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameAnswer, error) {
+	out := map[time.Time][]domain.GameAnswer{}
+	rounds, _ := r.ListRounds(ctx, guildID, from, to)
+	for _, rd := range rounds {
+		out[rd.Week], _ = r.ListAnswers(ctx, guildID, rd.Week)
+	}
+	return out, nil
+}
+
+func (r games) ListGuessesBetween(ctx context.Context, guildID string, from, to time.Time) (map[time.Time][]domain.GameGuess, error) {
+	out := map[time.Time][]domain.GameGuess{}
+	rounds, _ := r.ListRounds(ctx, guildID, from, to)
+	for _, rd := range rounds {
+		out[rd.Week], _ = r.ListGuesses(ctx, guildID, rd.Week)
+	}
+	return out, nil
 }
 
 func (r games) ListProposals(_ context.Context, guildID string, week time.Time) ([]domain.GameProposal, error) {

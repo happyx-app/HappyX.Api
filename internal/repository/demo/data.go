@@ -262,11 +262,12 @@ func (d *data) addDay(day time.Time) {
 	}
 }
 
-// addGame fills «Who's who?» for this week and the three before, and next week's proposals.
+// addGame fills «Who's who?» for this week and the seven before, so the history has rounds too,
+// and next week's proposals.
 func (d *data) addGame() {
 	today := GameDay(d.today)
 	week := domain.WeekStart(today)
-	for n := 0; n <= 3; n++ {
+	for n := 0; n <= 7; n++ {
 		w := week.AddDate(0, 0, -7*n)
 		key := w.Format("2006-01-02")
 		q := int(w.Unix()/86400/7) % len(d.text.questions)

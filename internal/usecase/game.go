@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"math/rand/v2"
 	"sort"
 	"strings"
@@ -211,6 +212,26 @@ type GameBoard struct {
 	Current  *GameRoundView
 	Previous *GameRoundView
 	Proposal GameProposalBox
+	// History holds the finished rounds before last week's, newest first.
+	History []GameHistoryRound
+}
+
+// gameHistoryWeeks is how far back the game page's history goes: a year, like «My evolution».
+const gameHistoryWeeks = 52
+
+// GameHistoryRound is a finished round as the history shows it: who wrote what, how the team did
+// as a whole and how the viewer did. It carries no ranking: nobody's score but the viewer's.
+type GameHistoryRound struct {
+	Round   domain.GameRound
+	Count   int  // answers, one per player
+	Enough  bool // the round was played: at least domain.MinGameAnswers answers
+	Answers []domain.GameAnswer
+	Right   map[string]int // answer ID -> how many guessed it
+	// The team's guesses and how many were right, and the same for the viewer alone.
+	Guesses, Correct     int
+	MyGuesses, MyCorrect int
+	MyGuessed            map[string]string // answer ID -> who the viewer said
+	MyAnswerID           string            // the viewer's own answer, if they wrote one
 }
 
 // GameBoard shows the game to one of the guild's members. Guilds without games, or where the
@@ -229,6 +250,10 @@ func (s *Service) GameBoard(ctx context.Context, v domain.Viewer, guildID string
 	if b.Previous, err = s.roundView(ctx, v, g, week.AddDate(0, 0, -7), today); err != nil {
 		return GameBoard{}, err
 	}
+	lastWeek := week.AddDate(0, 0, -7)
+	if b.History, err = s.gameHistory(ctx, v, g, lastWeek.AddDate(0, 0, -7*gameHistoryWeeks), lastWeek.AddDate(0, 0, -7)); err != nil {
+		return GameBoard{}, err
+	}
 	b.Proposal.Open, b.Proposal.Week = domain.ProposalsOpen(today), week.AddDate(0, 0, 7)
 	proposals, err := s.games.ListProposals(ctx, g.DiscordID, b.Proposal.Week)
 	if err != nil {
@@ -241,6 +266,117 @@ func (s *Service) GameBoard(ctx context.Context, v domain.Viewer, guildID string
 		}
 	}
 	return b, nil
+}
+
+// gameHistory returns the guild's rounds from one week to another, newest first, each as the
+// viewer sees it once finished. Callers only ask for weeks that are over.
+func (s *Service) gameHistory(ctx context.Context, v domain.Viewer, g domain.Guild, from, to time.Time) ([]GameHistoryRound, error) {
+	rounds, err := s.games.ListRounds(ctx, g.DiscordID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]GameHistoryRound, 0, len(rounds))
+	if len(rounds) == 0 {
+		return out, nil
+	}
+	// Three queries whatever the number of rounds.
+	allAnswers, err := s.games.ListAnswersBetween(ctx, g.DiscordID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	allGuesses, err := s.games.ListGuessesBetween(ctx, g.DiscordID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rounds {
+		answers := allAnswers[domain.TruncateDay(r.Week)]
+		h := GameHistoryRound{Round: r, Count: len(answers), Enough: len(answers) >= domain.MinGameAnswers, Answers: []domain.GameAnswer{}, MyGuessed: map[string]string{}}
+		if !h.Enough {
+			out = append(out, h)
+			continue
+		}
+		guesses := allGuesses[domain.TruncateDay(r.Week)]
+		h.Answers, h.Right = answers, map[string]int{}
+		author := map[string]string{}
+		for _, a := range answers {
+			author[a.ID] = a.MemberDiscordID
+			if a.MemberDiscordID == v.DiscordID {
+				h.MyAnswerID = a.ID
+			}
+		}
+		for _, gs := range guesses {
+			who, ok := author[gs.AnswerID]
+			if !ok {
+				continue // the author paused HappyX: like the ranking, it doesn't count
+			}
+			right := who == gs.GuessedDiscordID
+			h.Guesses++
+			if right {
+				h.Correct++
+				h.Right[gs.AnswerID]++
+			}
+			if gs.GuesserDiscordID == v.DiscordID {
+				h.MyGuessed[gs.AnswerID] = gs.GuessedDiscordID
+				h.MyGuesses++
+				if right {
+					h.MyCorrect++
+				}
+			}
+		}
+		out = append(out, h)
+	}
+	return out, nil
+}
+
+// MyGameWeek is how the viewer did in one finished round.
+type MyGameWeek struct {
+	Week             time.Time
+	Correct, Guesses int
+}
+
+// MyGameScores is the viewer's own score in one guild's game.
+type MyGameScores struct {
+	Guild domain.Guild
+	Weeks []MyGameWeek // rounds the viewer guessed in, oldest first
+}
+
+// MyGames returns, for each guild where the viewer plays, how they did in every finished round
+// whose week starts between from and to. Only the viewer sees it, like the rest of «My evolution».
+func (s *Service) MyGames(ctx context.Context, v domain.Viewer, from, to time.Time) ([]MyGameScores, error) {
+	from, to = domain.TruncateDay(from), domain.TruncateDay(to)
+	if to.Before(from) {
+		return nil, domain.ValidationError{Reason: "to must not be before from"}
+	}
+	if to.Sub(from) > maxReportDays*24*time.Hour {
+		return nil, domain.ValidationError{Reason: fmt.Sprintf("range must be at most %d days", maxReportDays)}
+	}
+	gs, err := s.GameGuilds(ctx, v)
+	if err != nil {
+		return nil, err
+	}
+	out := []MyGameScores{}
+	for _, g := range gs {
+		// Only finished rounds: the one before this week's and older.
+		lastWeek := domain.WeekStart(s.gameToday(g)).AddDate(0, 0, -7)
+		upTo := to
+		if lastWeek.Before(upTo) {
+			upTo = lastWeek
+		}
+		mine := MyGameScores{Guild: g, Weeks: []MyGameWeek{}}
+		if !upTo.Before(from) {
+			hs, err := s.gameHistory(ctx, v, g, from, upTo)
+			if err != nil {
+				return nil, err
+			}
+			for i := len(hs) - 1; i >= 0; i-- {
+				if h := hs[i]; h.MyGuesses > 0 {
+					mine.Weeks = append(mine.Weeks, MyGameWeek{Week: h.Round.Week, Correct: h.MyCorrect, Guesses: h.MyGuesses})
+				}
+			}
+		}
+		out = append(out, mine)
+	}
+	return out, nil
 }
 
 // roundView returns nil when the guild had no round that week.

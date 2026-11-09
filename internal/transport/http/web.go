@@ -66,6 +66,7 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /web/auth/logout", s.webLogout)
 	mux.Handle("GET /web/me", s.requireViewer(s.webMe))
 	mux.Handle("GET /web/me/moods", s.requireViewer(s.webMyMoods))
+	mux.Handle("GET /web/me/games", s.requireViewer(s.webMyGames))
 	mux.Handle("GET /web/me/data", s.requireViewer(s.webMyData))
 	mux.Handle("DELETE /web/me/data", s.requireViewer(s.webEraseMyData))
 	mux.Handle("GET /web/me/vacations", s.requireViewer(s.webMyVacations))
@@ -534,20 +535,30 @@ type myMoodDTO struct {
 	Message string `json:"message,omitempty"`
 }
 
-// webMyMoods returns the viewer's own answers in every server for ?from=&to= (YYYY-MM-DD),
-// by default the last 30 days.
-func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+// dayRange reads ?from=&to= (YYYY-MM-DD), by default the last 30 days. On a bad value it
+// answers 400 and returns false.
+func (s *Server) dayRange(w http.ResponseWriter, r *http.Request) (from, to time.Time, ok bool) {
 	q := r.URL.Query()
-	to := domain.TruncateDay(s.web.Now().UTC())
-	from := to.AddDate(0, 0, -29)
+	to = domain.TruncateDay(s.web.Now().UTC())
+	from = to.AddDate(0, 0, -29)
 	if q.Get("from") != "" || q.Get("to") != "" {
 		var err1, err2 error
 		from, err1 = time.Parse(dateLayout, q.Get("from"))
 		to, err2 = time.Parse(dateLayout, q.Get("to"))
 		if err1 != nil || err2 != nil {
 			writeError(w, http.StatusBadRequest, "from and to must both be YYYY-MM-DD")
-			return
+			return from, to, false
 		}
+	}
+	return from, to, true
+}
+
+// webMyMoods returns the viewer's own answers in every server for ?from=&to= (YYYY-MM-DD),
+// by default the last 30 days.
+func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Viewer) {
+	from, to, ok := s.dayRange(w, r)
+	if !ok {
+		return
 	}
 	evs, err := s.svc.Evolution(r.Context(), v, from, to)
 	if err != nil {

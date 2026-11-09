@@ -185,13 +185,14 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
 | GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
+| GET | `/web/me/games` | `?from=&to=` (default: last 30 days). The user's own «Who's who?» score in every server where they play: `weeks` with `correct` and `guesses` for each finished round they guessed in |
 | GET | `/web/me/vacations` | `{own, set_by_admins}`: the user's own vacation (`{from, to}`, `null` if none) and the ones admins set for them (each with `discord_guild_id` and `guild_name`), that haven't ended. See «Vacations» |
 | PUT | `/web/me/vacation` | `from`, `to` (`YYYY-MM-DD`): sets the user's own vacation, for every server, replacing the one they had. Needs `Content-Type: application/json` |
 | DELETE | `/web/me/vacation` | removes the user's own vacation. Needs `Content-Type: application/json`. 204; 404 if none |
 | DELETE | `/web/guilds/{guildID}/me/vacation` | removes the vacation an admin set for the user in that server. Needs `Content-Type: application/json`. 204; 404 if none |
 | GET | `/web/guilds/{guildID}/report` | same query and body as the `/v1` report |
 | GET | `/web/guilds/{guildID}/health` | `audience` (members who would get the survey now: opted in, in the server, allowed by the survey roles, not on vacation), `opted_out`, `on_vacation`, and `last_survey` (`day`, `recipients`, `failed`; `null` if none in the last 14 days) |
-| GET | `/web/guilds/{guildID}/game` | `{current, previous}`: this week's round and last week's, as the member sees them (authors only once finished). 404 unless games are on and the user takes part |
+| GET | `/web/guilds/{guildID}/game` | `{current, previous, history}`: this week's round and last week's, as the member sees them (authors only once finished), and `history`, the finished rounds before those (up to 52 weeks, newest first) with the team's `guesses`/`correct`, the user's own `mine`/`my_guesses` and who wrote what, but nobody else's score. 404 unless games are on and the user takes part |
 | PUT | `/web/guilds/{guildID}/game/answer` | `answer` (1-200): answer this week's question, Monday to Wednesday |
 | PUT | `/web/guilds/{guildID}/game/guesses` | `{"guesses": {answerID: userID}}`: replaces the user's guesses, Thursday to Sunday. 204 |
 | PUT | `/web/guilds/{guildID}/game/proposal` | `question` (1-200): propose next week's question, Thursday to Sunday. The game page's `proposal` is `{open, week, mine, count}`; rounds carry `proposed`, `my_question` and, once finished, `proposed_by` |
@@ -252,6 +253,7 @@ as the demo's main admin:
 | --- | --- |
 | GET | `/web/demo/{lang}/me` |
 | GET | `/web/demo/{lang}/me/moods` |
+| GET | `/web/demo/{lang}/me/games` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/report` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/health` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/roles` |
