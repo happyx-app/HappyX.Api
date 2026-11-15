@@ -20,9 +20,10 @@ type Service struct {
 	games      GameRepository
 	access     AccessRepository
 	privacy    PrivacyRepository
-	canvas     CanvasRepository   // nil until WithCanvas
-	vacations  VacationRepository // nil until WithVacations: nobody is ever on vacation
-	teamNotes  TeamNoteRepository // nil until WithTeamNotes
+	canvas     CanvasRepository      // nil until WithCanvas
+	vacations  VacationRepository    // nil until WithVacations: nobody is ever on vacation
+	teamNotes  TeamNoteRepository    // nil until WithTeamNotes
+	posts      ChannelPostRepository // nil until WithChannelPosts
 	now        Clock
 	gameDay    func(today time.Time) time.Time // nil until WithGameDay
 }

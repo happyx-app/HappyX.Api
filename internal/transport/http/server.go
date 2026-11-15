@@ -55,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /v1/guilds/{guildID}/members/{userID}", s.leaveMember)
 	api.HandleFunc("GET /v1/guilds/{guildID}/members/{userID}/access", s.memberAccess)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}/mood", s.recordMood)
+	api.HandleFunc("GET /v1/guilds/{guildID}/members/{userID}/moods", s.memberMoods)
 	api.HandleFunc("GET /v1/guilds/{guildID}/members/{userID}/vacations", s.memberVacations)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/members/{userID}/vacation", s.setMemberVacation)
 	api.HandleFunc("DELETE /v1/guilds/{guildID}/members/{userID}/vacations", s.endMemberVacations)
@@ -78,6 +79,10 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/guilds/{guildID}/team-notes/{noteID}", s.teamNote)
 	api.HandleFunc("PATCH /v1/guilds/{guildID}/team-notes/{noteID}", s.editTeamNote)
 	api.HandleFunc("DELETE /v1/guilds/{guildID}/team-notes/{noteID}", s.deleteTeamNote)
+	api.HandleFunc("GET /v1/guilds/{guildID}/channel-posts/{kind}", s.channelPost)
+	api.HandleFunc("PUT /v1/guilds/{guildID}/channel-posts/{kind}", s.putChannelPost)
+	api.HandleFunc("DELETE /v1/guilds/{guildID}/channel-posts/{kind}", s.deleteChannelPost)
+	api.HandleFunc("GET /v1/users/{userID}/guilds", s.userGuilds)
 	mux.Handle("/v1/", s.requireKey(api))
 	if s.web != nil {
 		s.webRoutes(mux)

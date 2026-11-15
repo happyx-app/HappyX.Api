@@ -52,7 +52,7 @@ func run(log *slog.Logger) error {
 		postgres.NewPrivacyRepo(pool),
 		time.Now,
 	).WithCanvas(postgres.NewCanvasRepo(pool)).WithVacations(postgres.NewVacationRepo(pool)).
-		WithTeamNotes(postgres.NewTeamNoteRepo(pool))
+		WithTeamNotes(postgres.NewTeamNoteRepo(pool)).WithChannelPosts(postgres.NewChannelPostRepo(pool))
 	api := httpapi.NewServer(svc, cfg.ServiceKeyHashes, log)
 	if w := cfg.Web; w != nil {
 		api.WithWeb(httpapi.Web{

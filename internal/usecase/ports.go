@@ -216,3 +216,12 @@ type TeamNoteRepository interface {
 	// ForPeriod returns the last note about the report period from..to.
 	ForPeriod(ctx context.Context, guildID string, from, to time.Time) (domain.TeamNote, error)
 }
+
+// ChannelPostRepository stores the messages HappyX keeps in a channel, one of each kind per guild.
+type ChannelPostRepository interface {
+	Get(ctx context.Context, guildID, kind string) (domain.ChannelPost, error)
+	// Put stores where the guild's post of that kind is, replacing the one before. The guild
+	// must exist (domain.ErrNotFound if not).
+	Put(ctx context.Context, p domain.ChannelPost) (domain.ChannelPost, error)
+	Delete(ctx context.Context, guildID, kind string) error
+}
