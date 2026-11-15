@@ -14,25 +14,29 @@ const dateLayout = "2006-01-02"
 // --- DTOs ---
 
 type guildDTO struct {
-	DiscordID       string        `json:"discord_guild_id"`
-	Name            string        `json:"name"`
-	AdminDiscordID  string        `json:"admin_discord_user_id"`
-	Anonymous       bool          `json:"anonymous"`
-	SurveyEnabled   bool          `json:"survey_enabled"`
-	Timezone        string        `json:"timezone"`
-	Language        string        `json:"language"`
-	SurveyHour      int           `json:"survey_hour"`
-	ReportFrequency string        `json:"report_frequency"`
-	ReportDM        bool          `json:"report_dm"`
-	KudosChannelID  string        `json:"kudos_channel_id"`
-	GamesEnabled    bool          `json:"games_enabled"`
-	WorkingDays     []int         `json:"working_days"`   // ISO days, 1 is Monday and 7 Sunday
-	SurveyMessage   string        `json:"survey_message"` // "" means the default text
-	SurveyRoles     roleFilterDTO `json:"survey_roles"`
-	GameRoles       roleFilterDTO `json:"game_roles"`
-	CanvasEnabled   bool          `json:"canvas_enabled"`
-	Active          bool          `json:"active"`
-	CreatedAt       time.Time     `json:"created_at"`
+	DiscordID      string `json:"discord_guild_id"`
+	Name           string `json:"name"`
+	AdminDiscordID string `json:"admin_discord_user_id"`
+	Anonymous      bool   `json:"anonymous"`
+	// NamedSince is the first day answers carry names, once anonymity was turned off: tomorrow
+	// right after turning it off. Left out while the guild is anonymous.
+	NamedSince         string        `json:"named_since,omitempty"`
+	AnonymityThreshold int           `json:"anonymity_threshold"`
+	SurveyEnabled      bool          `json:"survey_enabled"`
+	Timezone           string        `json:"timezone"`
+	Language           string        `json:"language"`
+	SurveyHour         int           `json:"survey_hour"`
+	ReportFrequency    string        `json:"report_frequency"`
+	ReportDM           bool          `json:"report_dm"`
+	KudosChannelID     string        `json:"kudos_channel_id"`
+	GamesEnabled       bool          `json:"games_enabled"`
+	WorkingDays        []int         `json:"working_days"`   // ISO days, 1 is Monday and 7 Sunday
+	SurveyMessage      string        `json:"survey_message"` // "" means the default text
+	SurveyRoles        roleFilterDTO `json:"survey_roles"`
+	GameRoles          roleFilterDTO `json:"game_roles"`
+	CanvasEnabled      bool          `json:"canvas_enabled"`
+	Active             bool          `json:"active"`
+	CreatedAt          time.Time     `json:"created_at"`
 }
 
 // roleFilterDTO narrows by role who receives the survey or plays the game: mode "all",
@@ -61,7 +65,12 @@ func (d *roleFilterDTO) patch() *domain.RoleFilter {
 }
 
 func toGuildDTO(g domain.Guild) guildDTO {
+	named := ""
+	if !g.Settings.NamedSince.IsZero() {
+		named = g.Settings.NamedSince.Format(dateLayout)
+	}
 	return guildDTO{
+		NamedSince: named, AnonymityThreshold: g.Settings.AnonymityThreshold,
 		DiscordID: g.DiscordID, Name: g.Name, AdminDiscordID: g.AdminDiscordID,
 		Anonymous: g.Settings.Anonymous, SurveyEnabled: g.Settings.SurveyEnabled, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM,
@@ -105,17 +114,21 @@ type moodDTO struct {
 }
 
 type reportDTO struct {
-	DiscordGuildID string          `json:"discord_guild_id"`
-	From           string          `json:"from"`
-	To             string          `json:"to"`
-	Anonymous      bool            `json:"anonymous"`
-	Responses      int             `json:"responses"`
-	Respondents    int             `json:"respondents"`
-	Average        float64         `json:"average"`
-	Distribution   map[string]int  `json:"distribution"`
-	Days           []dayDTO        `json:"days"`
-	Messages       []reportMsgDTO  `json:"messages"`
-	Kudos          kudosSummaryDTO `json:"kudos"`
+	DiscordGuildID string `json:"discord_guild_id"`
+	From           string `json:"from"`
+	To             string `json:"to"`
+	Anonymous      bool   `json:"anonymous"`
+	// Withheld: anonymous answers came from fewer people than anonymity_threshold, so only the
+	// counts are given.
+	AnonymityThreshold int             `json:"anonymity_threshold"`
+	Withheld           bool            `json:"withheld"`
+	Responses          int             `json:"responses"`
+	Respondents        int             `json:"respondents"`
+	Average            float64         `json:"average"`
+	Distribution       map[string]int  `json:"distribution"`
+	Days               []dayDTO        `json:"days"`
+	Messages           []reportMsgDTO  `json:"messages"`
+	Kudos              kudosSummaryDTO `json:"kudos"`
 	// Participation is left out when the bot reported no recipients in the period.
 	Participation *participationDTO `json:"participation,omitempty"`
 }
@@ -160,14 +173,19 @@ func toKudosDTO(k domain.Kudos) kudosDTO {
 type dayDTO struct {
 	Day       string  `json:"day"`
 	Responses int     `json:"responses"`
-	Average   float64 `json:"average"`
+	Average   float64 `json:"average"` // 0 when withheld
+	// Withheld: that day's anonymous answers came from fewer people than the threshold.
+	Withheld bool `json:"withheld"`
+	// AnonymityThreshold is the one the day was judged by; left out on a day without answers.
+	AnonymityThreshold int `json:"anonymity_threshold,omitempty"`
 	// Recipients is how many people got that day's survey; left out when unknown.
 	Recipients *int `json:"recipients,omitempty"`
 }
 
+// reportMsgDTO is a comment. An anonymous one has only its text: day and mood are left out.
 type reportMsgDTO struct {
-	Day       string `json:"day"`
-	Mood      int    `json:"mood"`
+	Day       string `json:"day,omitempty"`
+	Mood      int    `json:"mood,omitempty"`
 	Message   string `json:"message"`
 	DiscordID string `json:"discord_user_id,omitempty"`
 	Username  string `json:"username,omitempty"`
@@ -218,26 +236,27 @@ func (s *Server) getGuild(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Anonymous       *bool          `json:"anonymous"`
-		SurveyEnabled   *bool          `json:"survey_enabled"`
-		Timezone        *string        `json:"timezone"`
-		Language        *string        `json:"language"`
-		SurveyHour      *int           `json:"survey_hour"`
-		ReportFrequency *string        `json:"report_frequency"`
-		ReportDM        *bool          `json:"report_dm"`
-		AdminDiscordID  *string        `json:"admin_discord_user_id"`
-		KudosChannelID  *string        `json:"kudos_channel_id"` // "" clears it
-		GamesEnabled    *bool          `json:"games_enabled"`
-		WorkingDays     *[]int         `json:"working_days"`
-		SurveyRoles     *roleFilterDTO `json:"survey_roles"`
-		GameRoles       *roleFilterDTO `json:"game_roles"`
+		Anonymous          *bool          `json:"anonymous"`
+		AnonymityThreshold *int           `json:"anonymity_threshold"`
+		SurveyEnabled      *bool          `json:"survey_enabled"`
+		Timezone           *string        `json:"timezone"`
+		Language           *string        `json:"language"`
+		SurveyHour         *int           `json:"survey_hour"`
+		ReportFrequency    *string        `json:"report_frequency"`
+		ReportDM           *bool          `json:"report_dm"`
+		AdminDiscordID     *string        `json:"admin_discord_user_id"`
+		KudosChannelID     *string        `json:"kudos_channel_id"` // "" clears it
+		GamesEnabled       *bool          `json:"games_enabled"`
+		WorkingDays        *[]int         `json:"working_days"`
+		SurveyRoles        *roleFilterDTO `json:"survey_roles"`
+		GameRoles          *roleFilterDTO `json:"game_roles"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
 	p := usecase.SettingsPatch{
-		SurveyEnabled: in.SurveyEnabled,
-		Anonymous:     in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
+		SurveyEnabled: in.SurveyEnabled, AnonymityThreshold: in.AnonymityThreshold,
+		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		AdminDiscordID: in.AdminDiscordID, KudosChannelID: in.KudosChannelID, GamesEnabled: in.GamesEnabled,
 		ReportDM: in.ReportDM, SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(),
 	}
@@ -503,7 +522,8 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 	}
 	out := reportDTO{
 		DiscordGuildID: rep.GuildDiscordID, From: rep.From.Format(dateLayout), To: rep.To.Format(dateLayout),
-		Anonymous: rep.Anonymous, Responses: rep.Responses, Respondents: rep.Respondents,
+		Anonymous: rep.Anonymous, AnonymityThreshold: rep.AnonymityThreshold, Withheld: rep.Withheld,
+		Responses: rep.Responses, Respondents: rep.Respondents,
 		Average: rep.Average, Distribution: map[string]int{},
 		Days: []dayDTO{}, Messages: []reportMsgDTO{},
 		Kudos: kudosSummaryDTO{
@@ -524,13 +544,14 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		out.Distribution[strconv.Itoa(int(m))] = n
 	}
 	for _, d := range rep.Days {
-		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average, Recipients: d.Recipients})
+		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average, Withheld: d.Withheld, AnonymityThreshold: d.AnonymityThreshold, Recipients: d.Recipients})
 	}
 	for _, m := range rep.Messages {
-		out.Messages = append(out.Messages, reportMsgDTO{
-			Day: m.Day.Format(dateLayout), Mood: int(m.Mood), Message: m.Message,
-			DiscordID: m.MemberDiscordID, Username: m.Username,
-		})
+		msg := reportMsgDTO{Message: m.Message, DiscordID: m.MemberDiscordID, Username: m.Username}
+		if !m.Anonymous() {
+			msg.Day, msg.Mood = m.Day.Format(dateLayout), int(m.Mood)
+		}
+		out.Messages = append(out.Messages, msg)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

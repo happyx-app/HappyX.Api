@@ -56,9 +56,28 @@ Guilds are anonymous by default: reports include messages but never who wrote th
 turn this off with `PATCH /v1/guilds/{guildID}` `{"anonymous": false}`.
 
 Each answer remembers whether the guild was anonymous when it was given. Turning anonymity off
-only names the answers given from then on; earlier answers stay anonymous for good. A member who
-answers the same day again after the switch replaces their answer, which is then named. Turning
-anonymity back on hides every author again.
+names answers from the next day on (`named_since` on the guild), so nobody answers today thinking
+they are anonymous; earlier answers stay anonymous for good, also when they are changed later.
+Turning anonymity back on hides every author again.
+
+Anonymous comments come with their text only: no day and no mood, in an order unrelated to when
+they were written that stays the same between readings. In a small team, the day or the face
+would point to the author.
+
+**Anonymity threshold.** `anonymity_threshold` (default 3, from 3 to 50) is the fewest people
+whose anonymous answers a day needs before it shows more than counts. A day with anonymous answers
+from fewer people has `withheld: true` and keeps only `responses`. Nothing else from it counts
+anywhere: not in the period's `average` or `distribution` (which may then add up to fewer than
+`responses`), and not in the comments. Hiding only that day's own average would not be enough:
+the period's figures minus the other days' would give it back, and so would two reports whose
+periods differ by that day. Only anonymous answers count towards the threshold, because named ones
+are known and would give the rest away. Each answer keeps the threshold in force when it was given,
+and a day uses the highest of those and the current one, so lowering the threshold never shows a
+day that already has answers (changing an answer keeps the higher one). Each day in a report says
+the threshold it was judged by (`anonymity_threshold`), and the report's `anonymity_threshold` is
+the highest of its withheld days' when that is above the current one. When every answer falls on withheld days, the report has
+`withheld: true` and keeps only `responses` and `respondents`. The bot, the dashboard and the
+server export read the same rule, so all of them apply it.
 
 Kudos are the exception: they are public thanks posted in the server with both names, so reports
 list them with names whatever the setting.
@@ -89,8 +108,9 @@ routes, 404 on the web) and don't see the game in `/web/me`.
 Admins can write their own text for the daily survey (`survey_message`, at most 500 characters).
 It is sent as written, in the language it was written in; empty means the default text in the
 guild's language. It may use these variables, which the bot fills in for each person:
-`{{user.name}}`, `{{user.mention}}`, `{{user.streak}}`, `{{guild.name}}`, `{{date}}` and
-`{{weekday}}`. Any other `{{...}}` is rejected with 400, so a typo never reaches members. The
+`{{user.name}}`, `{{user.mention}}`, `{{guild.name}}`, `{{date}}` and `{{weekday}}`. Any other
+`{{...}}` is rejected with 400, so a typo never reaches members. `{{user.streak}}` is retired: a
+message saved with it keeps working, but a new or changed message can't use it. The
 anonymity notice, the mood buttons and «Don't ask me again» are always added by the bot below it.
 
 ### «Who's who?» game
@@ -184,7 +204,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
-| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
+| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak`, `entries`, `anonymous` (whether today's answer is), `named_since` (once anonymity was turned off) and `anonymity_threshold` |
 | GET | `/web/me/games` | `?from=&to=` (default: last 30 days). The user's own «Who's who?» score in every server where they play: `weeks` with `correct` and `guesses` for each finished round they guessed in |
 | GET | `/web/me/vacations` | `{own, set_by_admins}`: the user's own vacation (`{from, to}`, `null` if none) and the ones admins set for them (each with `discord_guild_id` and `guild_name`), that haven't ended. See «Vacations» |
 | PUT | `/web/me/vacation` | `from`, `to` (`YYYY-MM-DD`): sets the user's own vacation, for every server, replacing the one they had. Needs `Content-Type: application/json` |
@@ -200,7 +220,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | POST | `/web/guilds/{guildID}/canvas/strokes` | `drawing_id` (1-36 letters, digits, `-`, `_`), `color` (`0`-`4`), `anchor` (`[x, y]`, 0 to 1), `points` (2 to 500 points, within 4000 px of the anchor): 201 with `{stroke, version}`. 409 while the canvas is off or full, 429 past 60 a minute. Needs `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}/canvas/drawings/{drawingID}` | erases a drawing: the user's own, or any for moderators. `{version}`; 404 if there is nothing of theirs to erase. Needs `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}/canvas` | erases the whole canvas. `{version}`. Needs **manage** and `Content-Type: application/json` |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `survey_enabled`, `report_dm`, `language`, `games_enabled`, `canvas_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `anonymity_threshold`, `timezone`, `survey_hour`, `report_frequency`, `survey_enabled`, `report_dm`, `language`, `games_enabled`, `canvas_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
 | GET | `/web/guilds/{guildID}/roles` | the server's Discord roles (`id`, `name`, `color`, `position`, highest first), for the settings' pickers. Needs **manage** |
 | GET | `/web/guilds/{guildID}/channels` | the server's text and announcement channels (`id`, `name`, `category`, `position`, `can_post`), in Discord's order, for the kudos channel picker. Needs **manage** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |
@@ -235,8 +255,10 @@ which streaks are counted, and then deleted; erasing your data deletes them at o
 Personal data (GDPR): every logged-in user can download (`/web/me/data`) and erase
 (`DELETE /web/me/data`) their own data. A server export never tells its managers more than the
 dashboard does: a survey answer names its author only if the server is not anonymous now, the
-answer was given while it wasn't either, and the author still takes part; anonymous answers are
-sorted by content within each day. Game answers appear once guessing starts and their authors once
+answer was given while it wasn't either, and the author still takes part. The rest come summed
+up by day (`anonymous_days`: answers, and the average unless the day is withheld), with their
+comments apart in `anonymous_comments`, sorted by content, without day or mood and without those
+of withheld days. Game answers appear once guessing starts and their authors once
 the round is finished. Nightly database backups still hold erased data until they rotate.
 
 `/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.

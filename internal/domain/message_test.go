@@ -33,3 +33,16 @@ func TestValidateSurveyMessage(t *testing.T) {
 		}
 	}
 }
+
+func TestRetiredSurveyMessageVars(t *testing.T) {
+	old := "Llevas {{user.streak}} días"
+	if err := ValidateSurveyMessage(old); err != nil {
+		t.Fatalf("a message saved with {{user.streak}} stops being valid: %v", err)
+	}
+	if err := CheckNewSurveyMessage(old); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a new message with {{user.streak}}: want ErrInvalid, got %v", err)
+	}
+	if err := CheckNewSurveyMessage("Hola {{user.name}}"); err != nil {
+		t.Fatal(err)
+	}
+}

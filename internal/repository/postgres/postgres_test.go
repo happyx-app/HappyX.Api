@@ -66,6 +66,7 @@ const (
 	admin  = "300000000000000001"
 	user1  = "200000000000000001"
 	user2  = "200000000000000002"
+	user3  = "200000000000000003"
 )
 
 func TestGuildLifecycle(t *testing.T) {
@@ -127,8 +128,11 @@ func TestMoodUpsertOnePerDay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Responses != 1 || r.Average != float64(domain.MoodGood) {
+	if r.Responses != 1 || r.Distribution[domain.MoodBad] != 0 || !r.Withheld {
 		t.Fatalf("second answer should replace the first: %+v", r)
+	}
+	if e, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodGood, Message: "x"}); err != nil || e.Mood != domain.MoodGood {
+		t.Fatalf("stored again: %+v %v", e, err)
 	}
 
 	future := time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
@@ -184,14 +188,17 @@ func TestMoodChangeKeepsComment(t *testing.T) {
 }
 
 // TestAnswersKeepTheirAnonymity checks that turning anonymity off only names answers given
-// from then on.
+// from the next day on, and that answers given while anonymous stay so.
 func TestAnswersKeepTheirAnonymity(t *testing.T) {
 	ctx := context.Background()
-	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	clock := &testClock{now: time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)}
+	svc := testServiceClock(t, clock.Now)
 	mustRegister(t, svc, guildA)
-	mustJoin(t, svc, guildA, user1)
-	mustJoin(t, svc, guildA, user2)
-	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	for _, u := range []string{user1, user2, user3} {
+		mustJoin(t, svc, guildA, u)
+	}
+	thursday := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	friday := thursday.AddDate(0, 0, 1)
 
 	record := func(user, msg string) domain.MoodEntry {
 		t.Helper()
@@ -201,13 +208,15 @@ func TestAnswersKeepTheirAnonymity(t *testing.T) {
 		}
 		return e
 	}
-	setAnonymous := func(v bool) {
+	setAnonymous := func(v bool) domain.Guild {
 		t.Helper()
-		if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{Anonymous: &v}); err != nil {
+		g, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{Anonymous: &v})
+		if err != nil {
 			t.Fatal(err)
 		}
+		return g
 	}
-	authors := func() map[string]string {
+	authors := func(day time.Time) map[string]string {
 		t.Helper()
 		r, err := svc.Report(ctx, guildA, day, day)
 		if err != nil {
@@ -223,25 +232,86 @@ func TestAnswersKeepTheirAnonymity(t *testing.T) {
 	if e := record(user1, "before"); !e.Anonymous {
 		t.Fatalf("answer in an anonymous guild not marked anonymous: %+v", e)
 	}
-	setAnonymous(false)
+	g := setAnonymous(false)
+	if !g.Settings.NamedSince.Equal(friday) {
+		t.Fatalf("names should start tomorrow, got %v", g.Settings.NamedSince)
+	}
+	// The rest of today's answers were asked for as anonymous, and stay so.
+	if e := record(user2, "same day"); !e.Anonymous {
+		t.Fatalf("answer given the day anonymity was turned off is named: %+v", e)
+	}
+	record(user3, "")
+
+	clock.now = clock.now.AddDate(0, 0, 1)
 	if e := record(user2, "after"); e.Anonymous {
-		t.Fatalf("answer in a public guild marked anonymous: %+v", e)
+		t.Fatalf("answer the next day marked anonymous: %+v", e)
 	}
-	if got := authors(); got["before"] != "" || got["after"] != user2 {
-		t.Fatalf("authors after going public = %v, want only the new answer named", got)
+	record(user1, "")
+	record(user3, "")
+	if got := authors(thursday); got["before"] != "" || got["same day"] != "" {
+		t.Fatalf("authors of the day anonymity was turned off = %v, want none", got)
+	}
+	if got := authors(friday); got["after"] != user2 {
+		t.Fatalf("authors the next day = %v, want user2 named", got)
 	}
 
-	// Answering again once the guild is public makes that answer public.
-	record(user1, "before, edited")
-	if got := authors(); got["before, edited"] != user1 {
-		t.Fatalf("authors after re-answering = %v, want user1 named", got)
+	// Changing yesterday's answer keeps it anonymous: it was given as such.
+	clock.now = clock.now.Add(time.Hour)
+	if e, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Day: thursday, Mood: domain.MoodBad, Message: "before, edited"}); err != nil || !e.Anonymous {
+		t.Fatalf("yesterday's answer edited after going public: %+v %v", e, err)
 	}
 
-	setAnonymous(true)
-	for msg, id := range authors() {
+	if g := setAnonymous(true); !g.Settings.NamedSince.IsZero() {
+		t.Fatalf("anonymous again keeps a naming day: %v", g.Settings.NamedSince)
+	}
+	for msg, id := range authors(friday) {
 		if id != "" {
 			t.Fatalf("anonymous guild names the author of %q", msg)
 		}
+	}
+}
+
+// TestAnonymityThresholdSetting checks the per-server threshold and its bounds.
+func TestAnonymityThresholdSetting(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	mustRegister(t, svc, guildA)
+	g, err := svc.GetGuild(ctx, guildA)
+	if err != nil || g.Settings.AnonymityThreshold != 3 {
+		t.Fatalf("default threshold %d, want 3", g.Settings.AnonymityThreshold)
+	}
+	five := 5
+	g, err = svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &five})
+	if err != nil || g.Settings.AnonymityThreshold != 5 {
+		t.Fatalf("threshold 5: %+v %v", g.Settings, err)
+	}
+	for _, bad := range []int{2, 51} {
+		if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &bad}); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("threshold %d: want ErrInvalid, got %v", bad, err)
+		}
+	}
+
+	// Three people answer under a threshold of 5. Lowering it to 3 doesn't show their day.
+	for _, u := range []string{user1, user2, user3} {
+		mustJoin(t, svc, guildA, u)
+		if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: u, Mood: domain.MoodGood}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	three := 3
+	if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &three}); err != nil {
+		t.Fatal(err)
+	}
+	day := domain.TruncateDay(time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC))
+	if r, err := svc.Report(ctx, guildA, day, day); err != nil || !r.Withheld || !r.Days[0].Withheld {
+		t.Fatalf("a day answered under a threshold of 5 shows after lowering it: %+v %v", r, err)
+	}
+	// Changing an answer after lowering it keeps the higher threshold.
+	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodBad}); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := svc.Report(ctx, guildA, day, day); err != nil || !r.Days[0].Withheld || r.Days[0].AnonymityThreshold != 5 {
+		t.Fatalf("a changed answer takes the lower threshold: %+v %v", r, err)
 	}
 }
 
@@ -256,6 +326,7 @@ func TestGuildIsolation(t *testing.T) {
 	mustJoin(t, svc, guildA, user1)
 	mustJoin(t, svc, guildB, user1)
 	mustJoin(t, svc, guildA, user2)
+	mustJoin(t, svc, guildA, user3)
 
 	record := func(guild, user string, m domain.Mood) {
 		t.Helper()
@@ -265,6 +336,7 @@ func TestGuildIsolation(t *testing.T) {
 	}
 	record(guildA, user1, domain.MoodGreat)
 	record(guildA, user2, domain.MoodGreat)
+	record(guildA, user3, domain.MoodGreat)
 	record(guildB, user1, domain.MoodAwful)
 
 	day := domain.TruncateDay(now)
@@ -276,16 +348,16 @@ func TestGuildIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ra.Responses != 2 || ra.Average != 5 {
+	if ra.Responses != 3 || ra.Average != 5 {
 		t.Fatalf("guild A report mixed data: %+v", ra)
 	}
-	if rb.Responses != 1 || rb.Average != 1 {
-		t.Fatalf("guild B report mixed data: %+v", rb)
-	}
-	for _, m := range rb.Messages {
-		if m.Message != guildB {
-			t.Fatalf("guild B report contains another guild's message: %+v", m)
+	for _, m := range ra.Messages {
+		if m.Message != guildA {
+			t.Fatalf("guild A report contains another guild's message: %+v", m)
 		}
+	}
+	if rb.Responses != 1 || !rb.Withheld {
+		t.Fatalf("guild B report mixed data: %+v", rb)
 	}
 
 	membersB, err := svc.ListMembers(ctx, guildB, usecase.MembersAll)

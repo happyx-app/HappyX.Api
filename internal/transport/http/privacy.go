@@ -15,6 +15,10 @@ import (
 
 const exportVersion = 1
 
+// serverExportVersion went to 2 when anonymous answers stopped coming one by one: they come
+// summed up by day, with their comments apart (anonymous_days, anonymous_comments).
+const serverExportVersion = 2
+
 type exportKudosDTO struct {
 	Day          string `json:"day"`
 	FromUsername string `json:"from_username,omitempty"`
@@ -193,7 +197,14 @@ type exportMoodDTO struct {
 	Day      string `json:"day"`
 	Mood     int    `json:"mood"`
 	Message  string `json:"message,omitempty"`
-	Username string `json:"username,omitempty"`
+	Username string `json:"username"`
+}
+
+type exportDayDTO struct {
+	Day      string   `json:"day"`
+	Answers  int      `json:"answers"`
+	Average  *float64 `json:"average,omitempty"` // left out when withheld
+	Withheld bool     `json:"withheld"`
 }
 
 type exportAnswerDTO struct {
@@ -223,12 +234,15 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 		ExportedAt time.Time         `json:"exported_at"`
 		Server     serverExportDTO   `json:"server"`
 		Members    []exportMemberDTO `json:"members"`
-		Moods      []exportMoodDTO   `json:"moods"`
-		Kudos      []exportKudosDTO  `json:"kudos"`
-		Games      []exportRoundDTO  `json:"games"`
-		Canvas     []canvasStrokeDTO `json:"canvas_strokes"`
+		// Moods are the answers that show their author; the anonymous ones are summed up by day.
+		Moods             []exportMoodDTO   `json:"moods"`
+		AnonymousDays     []exportDayDTO    `json:"anonymous_days"`
+		AnonymousComments []string          `json:"anonymous_comments"`
+		Kudos             []exportKudosDTO  `json:"kudos"`
+		Games             []exportRoundDTO  `json:"games"`
+		Canvas            []canvasStrokeDTO `json:"canvas_strokes"`
 	}{
-		Format: "happyx-server-data", Version: exportVersion, ExportedAt: s.web.Now().UTC().Truncate(time.Second),
+		Format: "happyx-server-data", Version: serverExportVersion, ExportedAt: s.web.Now().UTC().Truncate(time.Second),
 		Server: serverExportDTO{
 			exportServerDTO: exportServerDTO{g.DiscordID, g.Name},
 			Anonymous:       g.Settings.Anonymous, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
@@ -237,7 +251,7 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 			SurveyMessage: g.Settings.SurveyMessage, SurveyRoles: toRoleFilterDTO(g.Settings.SurveyRoles),
 			GameRoles: toRoleFilterDTO(g.Settings.GameRoles), CanvasEnabled: g.Settings.CanvasEnabled, SurveyEnabled: g.Settings.SurveyEnabled, AdminDiscordID: g.AdminDiscordID, CreatedAt: g.CreatedAt,
 		},
-		Members: []exportMemberDTO{}, Moods: []exportMoodDTO{}, Kudos: toExportKudos(x.Kudos, true, true), Games: []exportRoundDTO{},
+		Members: []exportMemberDTO{}, Moods: []exportMoodDTO{}, AnonymousDays: []exportDayDTO{}, AnonymousComments: x.AnonymousComments, Kudos: toExportKudos(x.Kudos, true, true), Games: []exportRoundDTO{},
 		Canvas: []canvasStrokeDTO{},
 	}
 	for _, st := range x.CanvasStrokes {
@@ -248,6 +262,13 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 	}
 	for _, e := range x.Moods {
 		out.Moods = append(out.Moods, exportMoodDTO{e.Day.Format(dateLayout), int(e.Mood), e.Message, e.Username})
+	}
+	for _, d := range x.AnonymousDays {
+		dd := exportDayDTO{Day: d.Day.Format(dateLayout), Answers: d.Answers, Withheld: d.Withheld}
+		if !d.Withheld {
+			dd.Average = &d.Average
+		}
+		out.AnonymousDays = append(out.AnonymousDays, dd)
 	}
 	for _, rd := range x.Rounds {
 		er := exportRoundDTO{Week: rd.Week.Format(dateLayout), Question: rd.Question, ProposedBy: rd.ProposedBy, Answers: []exportAnswerDTO{}}
