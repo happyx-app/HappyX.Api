@@ -27,3 +27,5 @@ CREATE TABLE team_notes (
 );
 
 CREATE INDEX team_notes_guild_idx ON team_notes (guild_id, posted_on);
+-- One note per report period: a second admin is shown the first one's instead.
+CREATE UNIQUE INDEX team_notes_period_idx ON team_notes (guild_id, period_from, period_to);

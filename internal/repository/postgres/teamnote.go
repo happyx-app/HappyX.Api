@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -38,8 +39,15 @@ func (r *TeamNoteRepo) Create(ctx context.Context, n domain.TeamNote) (domain.Te
 		SELECT g.id, m.id, $3, $4, $5, $6, $7, $8
 		FROM guilds g JOIN members m ON m.guild_id = g.id
 		WHERE g.discord_id = $1 AND m.discord_id = $2
+		ON CONFLICT (guild_id, period_from, period_to) DO NOTHING
 		RETURNING id`,
 		n.GuildDiscordID, n.AuthorDiscordID, n.From, n.To, n.Body, n.ChannelID, n.MessageID, n.PostedOn).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Nothing inserted: the period already has a note, or the author isn't a member.
+		if _, perr := r.ForPeriod(ctx, n.GuildDiscordID, n.From, n.To); perr == nil {
+			return domain.TeamNote{}, domain.ErrTeamNoteTold
+		}
+	}
 	if err != nil {
 		return domain.TeamNote{}, notFound(err)
 	}

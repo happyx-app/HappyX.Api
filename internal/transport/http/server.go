@@ -175,7 +175,7 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrNotAMember), errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrClosed), errors.Is(err, domain.ErrGamesOff),
-		errors.Is(err, domain.ErrCanvasOff), errors.Is(err, domain.ErrCanvasFull):
+		errors.Is(err, domain.ErrCanvasOff), errors.Is(err, domain.ErrCanvasFull), errors.Is(err, domain.ErrTeamNoteTold):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, domain.ErrRemoving):
 		writeError(w, http.StatusGone, err.Error())

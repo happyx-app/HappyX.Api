@@ -205,7 +205,8 @@ type Clock func() time.Time
 
 // TeamNoteRepository stores what admins told the team after a report.
 type TeamNoteRepository interface {
-	// Create stores the note. The author must be a member of the guild (domain.ErrNotFound if not).
+	// Create stores the note. The author must be a member of the guild (domain.ErrNotFound if not),
+	// and the period must have no note yet (domain.ErrTeamNoteTold if it has).
 	Create(ctx context.Context, n domain.TeamNote) (domain.TeamNote, error)
 	Get(ctx context.Context, guildID string, id int64) (domain.TeamNote, error)
 	UpdateBody(ctx context.Context, guildID string, id int64, body string) (domain.TeamNote, error)

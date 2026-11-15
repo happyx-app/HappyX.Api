@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -9,6 +10,10 @@ import (
 // MaxTeamNoteLength bounds what an admin tells the team about a report. Discord fits more, but a
 // note is a few lines the team reads in a channel.
 const MaxTeamNoteLength = 1000
+
+// ErrTeamNoteTold means the report period already has a note: one per period, so a second admin
+// is shown the first one's.
+var ErrTeamNoteTold = errors.New("this period already has a team note")
 
 // TeamNote is what an admin told the team in a channel after a report: what they saw and what
 // they'll do. The bot publishes the message and stores where it went, so the note can be edited

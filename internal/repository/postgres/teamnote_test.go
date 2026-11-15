@@ -47,8 +47,14 @@ func TestTeamNotes(t *testing.T) {
 		}
 	}
 	// Published on a Friday, it is news on Monday.
+	// One note per report period.
+	if _, err := svc.PublishTeamNote(ctx, note); !errors.Is(err, domain.ErrTeamNoteTold) {
+		t.Fatalf("second note for the period: %v", err)
+	}
 	clock.now = time.Date(2026, 11, 20, 15, 0, 0, 0, time.UTC)
-	friday, err := svc.PublishTeamNote(ctx, note)
+	next := note
+	next.From, next.To = note.From.AddDate(0, 0, 7), note.To.AddDate(0, 0, 7)
+	friday, err := svc.PublishTeamNote(ctx, next)
 	if err != nil {
 		t.Fatal(err)
 	}
