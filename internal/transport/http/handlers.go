@@ -20,23 +20,27 @@ type guildDTO struct {
 	Anonymous      bool   `json:"anonymous"`
 	// NamedSince is the first day answers carry names, once anonymity was turned off: tomorrow
 	// right after turning it off. Left out while the guild is anonymous.
-	NamedSince         string        `json:"named_since,omitempty"`
-	AnonymityThreshold int           `json:"anonymity_threshold"`
-	SurveyEnabled      bool          `json:"survey_enabled"`
-	Timezone           string        `json:"timezone"`
-	Language           string        `json:"language"`
-	SurveyHour         int           `json:"survey_hour"`
-	ReportFrequency    string        `json:"report_frequency"`
-	ReportDM           bool          `json:"report_dm"`
-	KudosChannelID     string        `json:"kudos_channel_id"`
-	GamesEnabled       bool          `json:"games_enabled"`
-	WorkingDays        []int         `json:"working_days"`   // ISO days, 1 is Monday and 7 Sunday
-	SurveyMessage      string        `json:"survey_message"` // "" means the default text
-	SurveyRoles        roleFilterDTO `json:"survey_roles"`
-	GameRoles          roleFilterDTO `json:"game_roles"`
-	CanvasEnabled      bool          `json:"canvas_enabled"`
-	Active             bool          `json:"active"`
-	CreatedAt          time.Time     `json:"created_at"`
+	NamedSince         string `json:"named_since,omitempty"`
+	AnonymityThreshold int    `json:"anonymity_threshold"`
+	SurveyEnabled      bool   `json:"survey_enabled"`
+	Timezone           string `json:"timezone"`
+	Language           string `json:"language"`
+	SurveyHour         int    `json:"survey_hour"`
+	ReportFrequency    string `json:"report_frequency"`
+	ReportDM           bool   `json:"report_dm"`
+	KudosChannelID     string `json:"kudos_channel_id"`
+	// TeamChannelID is where HappyX tells the team things; "" means the kudos channel.
+	TeamChannelID string `json:"team_channel_id"`
+	// TeamSummary posts the week's summary there every Monday.
+	TeamSummary   bool          `json:"team_summary"`
+	GamesEnabled  bool          `json:"games_enabled"`
+	WorkingDays   []int         `json:"working_days"`   // ISO days, 1 is Monday and 7 Sunday
+	SurveyMessage string        `json:"survey_message"` // "" means the default text
+	SurveyRoles   roleFilterDTO `json:"survey_roles"`
+	GameRoles     roleFilterDTO `json:"game_roles"`
+	CanvasEnabled bool          `json:"canvas_enabled"`
+	Active        bool          `json:"active"`
+	CreatedAt     time.Time     `json:"created_at"`
 }
 
 // roleFilterDTO narrows by role who receives the survey or plays the game: mode "all",
@@ -75,6 +79,7 @@ func toGuildDTO(g domain.Guild) guildDTO {
 		Anonymous: g.Settings.Anonymous, SurveyEnabled: g.Settings.SurveyEnabled, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM,
 		KudosChannelID: g.Settings.KudosChannelID, GamesEnabled: g.Settings.GamesEnabled,
+		TeamChannelID: g.Settings.TeamChannelID, TeamSummary: g.Settings.TeamSummary,
 		WorkingDays: g.Settings.WorkingDays.ISO(), SurveyMessage: g.Settings.SurveyMessage,
 		SurveyRoles: toRoleFilterDTO(g.Settings.SurveyRoles), GameRoles: toRoleFilterDTO(g.Settings.GameRoles), CanvasEnabled: g.Settings.CanvasEnabled, Active: g.Active, CreatedAt: g.CreatedAt,
 	}
@@ -131,6 +136,8 @@ type reportDTO struct {
 	Kudos              kudosSummaryDTO `json:"kudos"`
 	// Participation is left out when the bot reported no recipients in the period.
 	Participation *participationDTO `json:"participation,omitempty"`
+	// Audience is how many people get the survey now; left out when unknown.
+	Audience int `json:"audience,omitempty"`
 }
 
 type participationDTO struct {
@@ -246,6 +253,8 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 		ReportDM           *bool          `json:"report_dm"`
 		AdminDiscordID     *string        `json:"admin_discord_user_id"`
 		KudosChannelID     *string        `json:"kudos_channel_id"` // "" clears it
+		TeamChannelID      *string        `json:"team_channel_id"`  // "" goes back to the kudos channel
+		TeamSummary        *bool          `json:"team_summary"`
 		GamesEnabled       *bool          `json:"games_enabled"`
 		WorkingDays        *[]int         `json:"working_days"`
 		SurveyRoles        *roleFilterDTO `json:"survey_roles"`
@@ -258,6 +267,7 @@ func (s *Server) updateGuild(w http.ResponseWriter, r *http.Request) {
 		SurveyEnabled: in.SurveyEnabled, AnonymityThreshold: in.AnonymityThreshold,
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		AdminDiscordID: in.AdminDiscordID, KudosChannelID: in.KudosChannelID, GamesEnabled: in.GamesEnabled,
+		TeamChannelID: in.TeamChannelID, TeamSummary: in.TeamSummary,
 		ReportDM: in.ReportDM, SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(),
 	}
 	if in.ReportFrequency != nil {
@@ -531,6 +541,7 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 			TopReceivers: []kudosCountDTO{},
 		},
 	}
+	out.Audience = rep.Audience
 	if p := rep.Participation; p != nil {
 		out.Participation = &participationDTO{Recipients: p.Recipients, Answered: p.Answered}
 	}

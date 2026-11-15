@@ -358,6 +358,8 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		ReportDM           *bool          `json:"report_dm"`
 		GamesEnabled       *bool          `json:"games_enabled"`
 		KudosChannelID     *string        `json:"kudos_channel_id"` // "" posts where the command is used
+		TeamChannelID      *string        `json:"team_channel_id"`  // "" posts in the kudos channel
+		TeamSummary        *bool          `json:"team_summary"`
 		WorkingDays        *[]int         `json:"working_days"`
 		SurveyMessage      *string        `json:"survey_message"` // "" goes back to the default text
 		SurveyRoles        *roleFilterDTO `json:"survey_roles"`
@@ -370,7 +372,7 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 	p := usecase.SettingsPatch{
 		SurveyEnabled: in.SurveyEnabled, AnonymityThreshold: in.AnonymityThreshold,
 		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
-		GamesEnabled: in.GamesEnabled, KudosChannelID: in.KudosChannelID, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
+		GamesEnabled: in.GamesEnabled, KudosChannelID: in.KudosChannelID, TeamChannelID: in.TeamChannelID, TeamSummary: in.TeamSummary, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
 		SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(), CanvasEnabled: in.CanvasEnabled,
 	}
 	if in.ReportFrequency != nil {

@@ -67,7 +67,8 @@ type AccessRepository interface {
 	ReplaceRoles(ctx context.Context, guildID string, roles []domain.Role) error
 	// ListRoles returns the guild's roles, highest first as in Discord.
 	ListRoles(ctx context.Context, guildID string) ([]domain.Role, error)
-	// ReplaceChannels sets the guild's channels and clears its kudos channel if it was deleted.
+	// ReplaceChannels sets the guild's channels and clears its kudos and team channels if they
+	// were deleted.
 	ReplaceChannels(ctx context.Context, guildID string, channels []domain.Channel) error
 	// ListChannels returns the guild's channels in Discord's order.
 	ListChannels(ctx context.Context, guildID string) ([]domain.Channel, error)
@@ -201,3 +202,17 @@ type VacationRepository interface {
 
 // Clock lets tests control "today".
 type Clock func() time.Time
+
+// TeamNoteRepository stores what admins told the team after a report.
+type TeamNoteRepository interface {
+	// Create stores the note. The author must be a member of the guild (domain.ErrNotFound if not),
+	// and the period must have no note yet (domain.ErrTeamNoteTold if it has).
+	Create(ctx context.Context, n domain.TeamNote) (domain.TeamNote, error)
+	Get(ctx context.Context, guildID string, id int64) (domain.TeamNote, error)
+	UpdateBody(ctx context.Context, guildID string, id int64, body string) (domain.TeamNote, error)
+	Delete(ctx context.Context, guildID string, id int64) error
+	// Latest returns the last note published on a day from since up to before until.
+	Latest(ctx context.Context, guildID string, since, until time.Time) (domain.TeamNote, error)
+	// ForPeriod returns the last note about the report period from..to.
+	ForPeriod(ctx context.Context, guildID string, from, to time.Time) (domain.TeamNote, error)
+}

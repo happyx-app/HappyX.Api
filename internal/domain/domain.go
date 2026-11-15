@@ -84,6 +84,12 @@ type GuildSettings struct {
 	// KudosChannelID is the channel where kudos cards are posted. Empty means the channel where
 	// the command was used.
 	KudosChannelID string
+	// TeamChannelID is the channel where HappyX tells the team things: what the admins say they
+	// will do after a report, and the week's summary. Empty means the kudos channel.
+	TeamChannelID string
+	// TeamSummary posts a short summary of the past week in the team channel every Monday: the
+	// game, the kudos and how many people answered, never the team's mood. On by default.
+	TeamSummary bool
 	// GamesEnabled turns on the weekly «Who's who?» game. Off by default.
 	GamesEnabled bool
 	// WorkingDays are the days the daily survey goes out. Monday to Friday by default.
@@ -165,6 +171,7 @@ func DefaultGuildSettings() GuildSettings {
 		SurveyHour:         13,
 		ReportFrequency:    ReportWeekly,
 		ReportDM:           true,
+		TeamSummary:        true,
 		Language:           "en",
 		WorkingDays:        MondayToFriday,
 		SurveyRoles:        RoleFilter{Mode: RolesEveryone},
@@ -205,6 +212,11 @@ func (s GuildSettings) Validate() error {
 			return err
 		}
 	}
+	if s.TeamChannelID != "" {
+		if err := validateSnowflake("team_channel_id", s.TeamChannelID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -231,6 +243,8 @@ const (
 	DispatchGame DispatchKind = "game"
 	// DispatchGameGuess tells members guessing is open; period is the round's Monday.
 	DispatchGameGuess DispatchKind = "game_guess"
+	// DispatchTeamSummary is the week's summary in the team channel; period is the week's Monday.
+	DispatchTeamSummary DispatchKind = "team_summary"
 )
 
 // MaxDispatchAttempts is how many times a send that reached nobody can be claimed for the same
@@ -239,7 +253,7 @@ const MaxDispatchAttempts = 3
 
 func (k DispatchKind) Valid() bool {
 	switch k {
-	case DispatchSurvey, DispatchReport, DispatchGame, DispatchGameGuess:
+	case DispatchSurvey, DispatchReport, DispatchGame, DispatchGameGuess, DispatchTeamSummary:
 		return true
 	}
 	return false

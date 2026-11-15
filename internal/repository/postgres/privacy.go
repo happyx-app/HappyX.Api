@@ -136,7 +136,13 @@ func (r *PrivacyRepo) memberData(ctx context.Context, m domain.Member) (domain.M
 		JOIN members m ON m.id = s.member_id AND m.guild_id = g.id
 		WHERE g.discord_id = $1 AND m.discord_id = $2
 		ORDER BY s.id`, g, u)
-	md.CanvasStrokes, err = collect(rows, qerr, scanCanvasStroke)
+	if md.CanvasStrokes, err = collect(rows, qerr, scanCanvasStroke); err != nil {
+		return md, err
+	}
+	rows, qerr = r.db.Query(ctx, `SELECT `+teamNoteCols+teamNoteFrom+`
+		WHERE g.discord_id = $1 AND m.discord_id = $2
+		ORDER BY n.created_at, n.id`, g, u)
+	md.TeamNotes, err = collect(rows, qerr, scanTeamNote)
 	return md, err
 }
 
@@ -168,6 +174,8 @@ func (r *PrivacyRepo) EraseUser(ctx context.Context, userID string) error {
 		`UPDATE guilds SET canvas_version = canvas_version + 1
 		 WHERE id IN (SELECT guild_id FROM canvas_strokes WHERE member_id IN ` + mine + `)`,
 		`DELETE FROM canvas_strokes WHERE member_id IN ` + mine,
+		// What they told their teams as admins. The messages stay in Discord, where they posted them.
+		`DELETE FROM team_notes WHERE author_member_id IN ` + mine,
 		// Their vacations, and their name on the ones they set for others as an admin.
 		`DELETE FROM vacations WHERE user_discord_id = $1`,
 		`UPDATE vacations SET set_by_discord_id = '' WHERE set_by_discord_id = $1`,
@@ -240,6 +248,12 @@ func (r *PrivacyRepo) GuildData(ctx context.Context, guildID string) (domain.Gui
 		JOIN members m ON m.id = s.member_id
 		WHERE g.discord_id = $1
 		ORDER BY s.id`, guildID)
-	d.CanvasStrokes, err = collect(rows, qerr, scanCanvasStroke)
+	if d.CanvasStrokes, err = collect(rows, qerr, scanCanvasStroke); err != nil {
+		return d, err
+	}
+	rows, qerr = r.db.Query(ctx, `SELECT `+teamNoteCols+teamNoteFrom+`
+		WHERE g.discord_id = $1
+		ORDER BY n.created_at, n.id`, guildID)
+	d.TeamNotes, err = collect(rows, qerr, scanTeamNote)
 	return d, err
 }
