@@ -135,6 +135,7 @@ func BuildGuildExport(d GuildData, today time.Time) GuildExport {
 	type day struct {
 		answers, sum int
 		people       map[string]struct{}
+		k            int // the highest threshold among the day's answers
 		comments     []string
 	}
 	days := map[time.Time]*day{}
@@ -151,6 +152,7 @@ func BuildGuildExport(d GuildData, today time.Time) GuildExport {
 		dd.answers++
 		dd.sum += int(e.Mood)
 		dd.people[e.MemberDiscordID] = struct{}{}
+		dd.k = max(dd.k, e.AnonymityThreshold)
 		if e.Message != "" {
 			dd.comments = append(dd.comments, e.Message)
 		}
@@ -163,7 +165,7 @@ func BuildGuildExport(d GuildData, today time.Time) GuildExport {
 		return a.Username < b.Username
 	})
 	for dt, dd := range days {
-		x := ExportedDay{Day: dt, Answers: dd.answers, Withheld: WithheldDay(len(dd.people), d.Guild.Settings.AnonymityThreshold)}
+		x := ExportedDay{Day: dt, Answers: dd.answers, Withheld: WithheldDay(len(dd.people), max(dd.k, d.Guild.Settings.AnonymityThreshold))}
 		if !x.Withheld {
 			x.Average = float64(dd.sum) / float64(dd.answers)
 			out.AnonymousComments = append(out.AnonymousComments, dd.comments...)

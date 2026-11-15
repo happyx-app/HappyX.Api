@@ -298,8 +298,12 @@ type MoodEntry struct {
 	// Anonymous records whether the guild was anonymous when the member answered. Such an
 	// answer stays anonymous even if the guild later turns anonymity off.
 	Anonymous bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// AnonymityThreshold is the guild's threshold when the member answered. A day is withheld
+	// with the highest of its answers' thresholds and the guild's current one, so lowering the
+	// threshold never shows a day that was answered under a higher one.
+	AnonymityThreshold int
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 func (e MoodEntry) Validate() error {

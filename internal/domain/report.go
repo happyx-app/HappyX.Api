@@ -174,8 +174,10 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 
 	type acc struct {
 		n, sum int
-		// anonymous are who answered without their name showing.
+		// anonymous are who answered without their name showing, and k the highest threshold
+		// among their answers (see MoodEntry.AnonymityThreshold).
 		anonymous    map[string]struct{}
+		k            int
 		distribution map[Mood]int
 		named        []ReportMessage
 		unnamed      []ReportMessage
@@ -197,6 +199,7 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		shown := !guild.Settings.Anonymous && !e.Anonymous
 		if !shown {
 			a.anonymous[e.MemberDiscordID] = struct{}{}
+			a.k = max(a.k, e.AnonymityThreshold)
 		}
 		switch {
 		case e.Message == "":
@@ -209,7 +212,7 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 	}
 	r.Respondents = len(people)
 
-	withheld := func(a *acc) bool { return WithheldDay(len(a.anonymous), k) }
+	withheld := func(a *acc) bool { return WithheldDay(len(a.anonymous), max(k, a.k)) }
 	// Days in order, so named comments keep the order they were written in.
 	days := make([]time.Time, 0, len(perDay))
 	for d := range perDay {

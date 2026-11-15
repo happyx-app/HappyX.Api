@@ -147,6 +147,19 @@ func TestBuildReportLeavesWithheldDaysOut(t *testing.T) {
 	}
 	g.Settings.Anonymous = true
 
+	// Lowering the threshold doesn't show a day answered under a higher one.
+	strict := []MoodEntry{
+		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodGood, AnonymityThreshold: 5},
+		{MemberDiscordID: userB, Day: day("2026-10-19"), Mood: MoodGood, AnonymityThreshold: 5},
+		{MemberDiscordID: userC, Day: day("2026-10-19"), Mood: MoodGood, AnonymityThreshold: 5},
+		{MemberDiscordID: userA, Day: day("2026-10-20"), Mood: MoodBad, AnonymityThreshold: 3},
+		{MemberDiscordID: userB, Day: day("2026-10-20"), Mood: MoodBad, AnonymityThreshold: 3},
+		{MemberDiscordID: userC, Day: day("2026-10-20"), Mood: MoodBad, AnonymityThreshold: 3},
+	}
+	if r := BuildReport(g, day("2026-10-19"), day("2026-10-20"), strict, nil); !r.Days[0].Withheld || r.Days[1].Withheld || r.Average != 2 {
+		t.Fatalf("a day answered under a threshold of 5 shows with 3 people: %+v", r)
+	}
+
 	// Three people, never three on the same day: nothing can be shown.
 	spread := []MoodEntry{
 		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodGood, Message: "a"},

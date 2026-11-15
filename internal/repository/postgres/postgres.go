@@ -396,12 +396,14 @@ type MoodRepo struct{ db *pgxpool.Pool }
 
 func NewMoodRepo(db *pgxpool.Pool) *MoodRepo { return &MoodRepo{db: db} }
 
-const moodCols = `g.discord_id, m.discord_id, e.day, e.mood, e.message, e.anonymous, e.created_at, e.updated_at`
+const moodCols = `g.discord_id, m.discord_id, e.day, e.mood, e.message, e.anonymous, e.anonymity_threshold, e.created_at, e.updated_at`
 
 func scanMood(row pgx.Row) (domain.MoodEntry, error) {
 	var e domain.MoodEntry
 	var mood int16
-	err := row.Scan(&e.GuildDiscordID, &e.MemberDiscordID, &e.Day, &mood, &e.Message, &e.Anonymous, &e.CreatedAt, &e.UpdatedAt)
+	var k int16
+	err := row.Scan(&e.GuildDiscordID, &e.MemberDiscordID, &e.Day, &mood, &e.Message, &e.Anonymous, &k, &e.CreatedAt, &e.UpdatedAt)
+	e.AnonymityThreshold = int(k)
 	e.Mood = domain.Mood(mood)
 	e.Day = domain.TruncateDay(e.Day)
 	return e, notFound(err)
@@ -411,25 +413,28 @@ func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry, keepMessage b
 	// The member lookup is scoped to the guild, so an entry can never be attached to
 	// another guild's member. The entry takes the guild's anonymity for its day at the moment
 	// it is written (see GuildSettings.AnonymousOn): answering again for a day after the guild
-	// went public makes that answer public.
+	// went public makes that answer public. It also takes the guild's anonymity threshold, so
+	// lowering it later doesn't show days that were answered under a higher one.
 	return scanMood(r.db.QueryRow(ctx, `
 		WITH t AS (
 		         SELECT g.id AS guild_id, g.discord_id AS guild_discord_id,
 		                g.anonymous OR (g.named_since IS NOT NULL AND $3::date < g.named_since) AS anonymous,
+		                g.anonymity_threshold,
 		                m.id AS member_id, m.discord_id AS member_discord_id
 		         FROM members m JOIN guilds g ON g.id = m.guild_id
 		         WHERE g.discord_id = $1 AND m.discord_id = $2
 		     ),
 		     e AS (
-		         INSERT INTO mood_entries (guild_id, member_id, day, mood, message, anonymous)
-		         SELECT t.guild_id, t.member_id, $3, $4, $5, t.anonymous FROM t
+		         INSERT INTO mood_entries (guild_id, member_id, day, mood, message, anonymous, anonymity_threshold)
+		         SELECT t.guild_id, t.member_id, $3, $4, $5, t.anonymous, t.anonymity_threshold FROM t
 		         ON CONFLICT (member_id, day) DO UPDATE
 		         SET mood = EXCLUDED.mood,
 		             message = CASE WHEN $6 THEN mood_entries.message ELSE EXCLUDED.message END,
-		             anonymous = EXCLUDED.anonymous, updated_at = now()
+		             anonymous = EXCLUDED.anonymous, anonymity_threshold = EXCLUDED.anonymity_threshold,
+		             updated_at = now()
 		         RETURNING *
 		     )
-		SELECT t.guild_discord_id, t.member_discord_id, e.day, e.mood, e.message, e.anonymous, e.created_at, e.updated_at
+		SELECT t.guild_discord_id, t.member_discord_id, e.day, e.mood, e.message, e.anonymous, e.anonymity_threshold, e.created_at, e.updated_at
 		FROM e JOIN t ON t.member_id = e.member_id`,
 		e.GuildDiscordID, e.MemberDiscordID, e.Day, int16(e.Mood), e.Message, keepMessage))
 }
