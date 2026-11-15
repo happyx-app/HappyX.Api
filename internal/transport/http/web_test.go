@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/happyx-app/HappyX.Api/internal/domain"
 	httpapi "github.com/happyx-app/HappyX.Api/internal/transport/http"
@@ -217,11 +218,21 @@ func TestWebDisabled(t *testing.T) {
 }
 
 func TestWebMyMoods(t *testing.T) {
-	srv := newTestServer(t, func(s *httpapi.Server) {
+	// Only today's and yesterday's surveys can be answered, so the clock moves to each day.
+	today := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	now := today
+	srv := newTestServerClock(t, func() time.Time { return now }, func(s *httpapi.Server) {
 		s.WithWeb(httpapi.Web{Identity: fakeDiscord{}, SessionKey: []byte("0123456789abcdef0123456789abcdef"), PublicURL: "http://happyx.test/"})
 	})
 	const other = "200000000000000002"
 	mood := func(g, u, day string, m int, msg string) {
+		t.Helper()
+		d, err := time.Parse("2006-01-02", day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now = d.Add(12 * time.Hour)
+		defer func() { now = today }()
 		body := `{"mood":` + strconv.Itoa(m) + `,"day":"` + day + `","message":"` + msg + `"}`
 		if code, out := do(t, srv, "PUT", "/v1/guilds/"+g+"/members/"+u+"/mood", key, body); code != 200 {
 			t.Fatalf("mood: %d %v", code, out)

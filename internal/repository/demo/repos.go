@@ -203,7 +203,7 @@ func (r moods) Streaks(_ context.Context, guildID string, _ domain.Weekdays, fro
 	return out, nil
 }
 
-func (moods) Upsert(context.Context, domain.MoodEntry) (domain.MoodEntry, error) {
+func (moods) Upsert(context.Context, domain.MoodEntry, bool) (domain.MoodEntry, error) {
 	return domain.MoodEntry{}, ErrReadOnly
 }
 

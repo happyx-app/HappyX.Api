@@ -20,6 +20,23 @@ func testService(t *testing.T, now time.Time) *usecase.Service {
 	return testServiceClock(t, func() time.Time { return now })
 }
 
+// testClock is a test's clock that it can move, for example to answer a past day's survey:
+// only today's and yesterday's can be answered.
+type testClock struct{ now time.Time }
+
+func (c *testClock) Now() time.Time { return c.now }
+
+// answerOn records user's mood for day as if they answered that day, then puts the clock back.
+func answerOn(t *testing.T, svc *usecase.Service, clock *testClock, guild, user string, day time.Time, mood domain.Mood) {
+	t.Helper()
+	back := clock.now
+	clock.now = day.Add(12 * time.Hour)
+	defer func() { clock.now = back }()
+	if _, err := svc.RecordMood(context.Background(), usecase.RecordMoodInput{GuildID: guild, UserID: user, Mood: mood, Day: day}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func testServiceClock(t *testing.T, now usecase.Clock) *usecase.Service {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
@@ -120,6 +137,49 @@ func TestMoodUpsertOnePerDay(t *testing.T) {
 	}
 	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user2, Mood: domain.MoodGood}); !errors.Is(err, domain.ErrNotAMember) {
 		t.Fatalf("non member: want ErrNotAMember, got %v", err)
+	}
+}
+
+// TestMoodOnlyTodayAndYesterday checks that a survey can be answered until the next one
+// arrives, but an older one can't change a period already reported.
+func TestMoodOnlyTodayAndYesterday(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	mustRegister(t, svc, guildA)
+	mustJoin(t, svc, guildA, user1)
+
+	yesterday := time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)
+	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodGood, Day: yesterday}); err != nil {
+		t.Fatalf("yesterday: %v", err)
+	}
+	before := yesterday.AddDate(0, 0, -1)
+	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodGood, Day: before}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("two days ago: want ErrInvalid, got %v", err)
+	}
+}
+
+// TestMoodChangeKeepsComment checks that changing the mood with KeepMessage leaves the
+// day's comment, and that a new answer with KeepMessage starts without one.
+func TestMoodChangeKeepsComment(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC))
+	mustRegister(t, svc, guildA)
+	mustJoin(t, svc, guildA, user1)
+
+	e, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodGood, KeepMessage: true})
+	if err != nil || e.Message != "" {
+		t.Fatalf("first answer: %+v %v", e, err)
+	}
+	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodGood, Message: "long meetings"}); err != nil {
+		t.Fatal(err)
+	}
+	e, err = svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodBad, Message: "ignored", KeepMessage: true})
+	if err != nil || e.Mood != domain.MoodBad || e.Message != "long meetings" {
+		t.Fatalf("changed mood should keep the comment: %+v %v", e, err)
+	}
+	e, err = svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodBad})
+	if err != nil || e.Message != "" {
+		t.Fatalf("an empty message still removes the comment: %+v %v", e, err)
 	}
 }
 

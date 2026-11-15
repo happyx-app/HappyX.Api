@@ -150,13 +150,12 @@ func TestVacations(t *testing.T) {
 func TestVacationKeepsStreak(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC) // a Friday
-	svc := testService(t, now)
+	clock := &testClock{now: now}
+	svc := testServiceClock(t, clock.Now)
 	mustRegister(t, svc, guildA)
 	mustJoin(t, svc, guildA, user1)
 	for _, d := range []string{"2026-10-26", "2026-10-27", "2026-11-05", "2026-11-06"} {
-		if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodGood, Day: day(d)}); err != nil {
-			t.Fatal(err)
-		}
+		answerOn(t, svc, clock, guildA, user1, day(d), domain.MoodGood)
 	}
 	streak := func() (db, page int) {
 		got, err := svc.MemberStreaks(ctx, guildA)

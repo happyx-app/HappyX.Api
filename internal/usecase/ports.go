@@ -95,7 +95,8 @@ type DispatchRepository interface {
 
 type MoodRepository interface {
 	// Upsert stores the member's mood for e.Day, replacing an earlier answer for that day.
-	Upsert(ctx context.Context, e domain.MoodEntry) (domain.MoodEntry, error)
+	// With keepMessage, an earlier answer's comment stays and e.Message is ignored.
+	Upsert(ctx context.Context, e domain.MoodEntry, keepMessage bool) (domain.MoodEntry, error)
 	ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.MoodEntry, error)
 	// ListForUser returns one person's own answers in every guild, oldest first.
 	ListForUser(ctx context.Context, userID string, from, to time.Time) ([]domain.MoodEntry, error)

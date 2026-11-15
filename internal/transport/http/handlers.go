@@ -439,9 +439,10 @@ func (s *Server) syncChannels(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) recordMood(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Mood    int    `json:"mood"`
-		Message string `json:"message"`
-		Day     string `json:"day"` // optional, YYYY-MM-DD; defaults to today in the guild's timezone
+		Mood int `json:"mood"`
+		// Message is the comment. Left out, the day's comment stays as it is; "" removes it.
+		Message *string `json:"message"`
+		Day     string  `json:"day"` // optional, YYYY-MM-DD; defaults to today in the guild's timezone
 	}
 	if !decode(w, r, &in) {
 		return
@@ -456,7 +457,8 @@ func (s *Server) recordMood(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := s.svc.RecordMood(r.Context(), usecase.RecordMoodInput{
 		GuildID: r.PathValue("guildID"), UserID: r.PathValue("userID"),
-		Mood: domain.Mood(in.Mood), Message: in.Message, Day: day,
+		Mood: domain.Mood(in.Mood), Day: day,
+		Message: deref(in.Message), KeepMessage: in.Message == nil,
 	})
 	if err != nil {
 		s.fail(w, r, err)
@@ -656,4 +658,12 @@ func (s *Server) patchWorkingDays(w http.ResponseWriter, r *http.Request, iso *[
 	}
 	p.WorkingDays = &days
 	return true
+}
+
+// deref is *p, or "" when p is nil.
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }

@@ -14,7 +14,8 @@ import (
 // The database's streak count must match domain.Streak, which the web's "my evolution" uses.
 func TestMemberStreaksMatchDomain(t *testing.T) {
 	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC) // a Friday
-	svc := testService(t, now)
+	clock := &testClock{now: now}
+	svc := testServiceClock(t, clock.Now)
 	ctx := context.Background()
 	mustRegister(t, svc, guildA)
 	sunToThu := domain.Weekdays(1<<time.Sunday | 1<<time.Monday | 1<<time.Tuesday | 1<<time.Wednesday | 1<<time.Thursday)
@@ -40,9 +41,7 @@ func TestMemberStreaksMatchDomain(t *testing.T) {
 				continue
 			}
 			answered[day] = true
-			if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user, Mood: domain.MoodGood, Day: day}); err != nil {
-				t.Fatal(err)
-			}
+			answerOn(t, svc, clock, guildA, user, day, domain.MoodGood)
 		}
 		if n := domain.Streak(g, answered, nil, today); n > 0 {
 			want[user] = n
