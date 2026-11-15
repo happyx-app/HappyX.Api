@@ -22,7 +22,7 @@ func TestTeamNotes(t *testing.T) {
 
 	note := domain.TeamNote{
 		GuildDiscordID: guildA, AuthorDiscordID: admin, From: day("2026-11-09"), To: day("2026-11-15"),
-		Body: "  Muchas reuniones seguidas. Desde el lunes, martes por la tarde sin reuniones.  ",
+		Body:      "  Muchas reuniones seguidas. Desde el lunes, martes por la tarde sin reuniones.  ",
 		ChannelID: "400000000000000001", MessageID: "500000000000000001",
 	}
 	// Only a member of the guild can be its author.
