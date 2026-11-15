@@ -74,3 +74,12 @@ func (s *Service) CurrentTeamNote(ctx context.Context, guildID string, day time.
 	day = domain.TruncateDay(day)
 	return s.teamNotes.Latest(ctx, guildID, g.Settings.PreviousWorkingDay(day), day)
 }
+
+// PeriodTeamNote is the note already told about a report's period, so «Tell the team» pressed
+// again edits it instead of posting another.
+func (s *Service) PeriodTeamNote(ctx context.Context, guildID string, from, to time.Time) (domain.TeamNote, error) {
+	if s.teamNotes == nil {
+		return domain.TeamNote{}, domain.ErrNotFound
+	}
+	return s.teamNotes.ForPeriod(ctx, guildID, domain.TruncateDay(from), domain.TruncateDay(to))
+}

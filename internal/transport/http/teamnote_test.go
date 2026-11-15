@@ -46,6 +46,15 @@ func TestTeamChannelAndNotes(t *testing.T) {
 	if code, c := do(t, srv, "GET", "/v1/guilds/"+guildA+"/team-notes/current?day=2026-10-23", key, ""); code != 200 || jsonID(c["id"]) != id {
 		t.Fatalf("current the next day: %d %v", code, c)
 	}
+	if code, c := do(t, srv, "GET", "/v1/guilds/"+guildA+"/team-notes?from=2026-10-12&to=2026-10-18", key, ""); code != 200 || jsonID(c["id"]) != id {
+		t.Fatalf("note for the period: %d %v", code, c)
+	}
+	if code, _ := do(t, srv, "GET", "/v1/guilds/"+guildA+"/team-notes?from=2026-10-19&to=2026-10-25", key, ""); code != 404 {
+		t.Fatalf("another period has no note: %d", code)
+	}
+	if code, _ := do(t, srv, "GET", "/v1/guilds/"+guildA+"/team-notes?from=x&to=2026-10-25", key, ""); code != 400 {
+		t.Fatalf("bad period: %d", code)
+	}
 	if code, _ := do(t, srv, "GET", "/v1/guilds/"+guildA+"/team-notes/current?day=mañana", key, ""); code != 400 {
 		t.Fatalf("bad day: %d", code)
 	}

@@ -212,4 +212,6 @@ type TeamNoteRepository interface {
 	Delete(ctx context.Context, guildID string, id int64) error
 	// Latest returns the last note published on a day from since up to before until.
 	Latest(ctx context.Context, guildID string, since, until time.Time) (domain.TeamNote, error)
+	// ForPeriod returns the last note about the report period from..to.
+	ForPeriod(ctx context.Context, guildID string, from, to time.Time) (domain.TeamNote, error)
 }

@@ -81,3 +81,9 @@ func (r *TeamNoteRepo) Latest(ctx context.Context, guildID string, since, until 
 		WHERE g.discord_id = $1 AND n.posted_on >= $2 AND n.posted_on < $3
 		ORDER BY n.created_at DESC, n.id DESC LIMIT 1`, guildID, since, until))
 }
+
+func (r *TeamNoteRepo) ForPeriod(ctx context.Context, guildID string, from, to time.Time) (domain.TeamNote, error) {
+	return scanTeamNote(r.db.QueryRow(ctx, `SELECT `+teamNoteCols+teamNoteFrom+`
+		WHERE g.discord_id = $1 AND n.period_from = $2 AND n.period_to = $3
+		ORDER BY n.created_at DESC, n.id DESC LIMIT 1`, guildID, from, to))
+}

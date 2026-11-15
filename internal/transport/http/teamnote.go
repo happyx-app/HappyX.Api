@@ -129,3 +129,20 @@ func (s *Server) currentTeamNote(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, toTeamNoteDTO(n))
 }
+
+// periodTeamNote is the note about the report period ?from=&to= (YYYY-MM-DD): 404 when there is
+// none.
+func (s *Server) periodTeamNote(w http.ResponseWriter, r *http.Request) {
+	from, err1 := time.Parse(dateLayout, r.URL.Query().Get("from"))
+	to, err2 := time.Parse(dateLayout, r.URL.Query().Get("to"))
+	if err1 != nil || err2 != nil {
+		writeError(w, http.StatusBadRequest, "from and to must both be YYYY-MM-DD")
+		return
+	}
+	n, err := s.svc.PeriodTeamNote(r.Context(), r.PathValue("guildID"), from, to)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toTeamNoteDTO(n))
+}

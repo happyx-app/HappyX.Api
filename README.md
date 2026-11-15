@@ -347,6 +347,7 @@ reported (see `PUT .../dispatches/{kind}/{period}`), so older surveys don't skew
 | PUT | `/v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}` | `answer` (1-200) | replaces an earlier answer. 403 for paused members, 409 once answering is over |
 | PUT | `/v1/guilds/{guildID}/game/proposals/{userID}` | `question` (1-200) | proposes next week's question, replacing an earlier one; returns its `week`. 403 for paused members, 409 Monday to Wednesday |
 | POST | `/v1/guilds/{guildID}/team-notes` | `author_discord_user_id` (a member), `from`, `to` (the report's period), `body` (1-1000), `channel_id`, `message_id` | records what an admin told the team after a report, once the bot has published it. 201 with the note (`id`, `author_username`, `posted_on`: today in the server's timezone…); 404 if the author isn't a member |
+| GET | `/v1/guilds/{guildID}/team-notes` | `?from=YYYY-MM-DD&to=YYYY-MM-DD` | the note already told about that report period, so «Tell the team» pressed again edits it instead of posting another. 404 if none |
 | GET | `/v1/guilds/{guildID}/team-notes/current` | `?day=YYYY-MM-DD` | the note the thanks card points to for answers on that day: the last one published from the previous working day up to the day before. 404 if none |
 | GET | `/v1/guilds/{guildID}/team-notes/{noteID}` | | one note. 404 if it isn't this server's |
 | PATCH | `/v1/guilds/{guildID}/team-notes/{noteID}` | `body` (1-1000) | after the bot edited the message: the new text |

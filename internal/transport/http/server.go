@@ -73,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /v1/guilds/{guildID}/game/rounds/{week}/answers/{userID}", s.answerGame)
 	api.HandleFunc("PUT /v1/guilds/{guildID}/game/proposals/{userID}", s.proposeQuestion)
 	api.HandleFunc("POST /v1/guilds/{guildID}/team-notes", s.publishTeamNote)
+	api.HandleFunc("GET /v1/guilds/{guildID}/team-notes", s.periodTeamNote)
 	api.HandleFunc("GET /v1/guilds/{guildID}/team-notes/current", s.currentTeamNote)
 	api.HandleFunc("GET /v1/guilds/{guildID}/team-notes/{noteID}", s.teamNote)
 	api.HandleFunc("PATCH /v1/guilds/{guildID}/team-notes/{noteID}", s.editTeamNote)
