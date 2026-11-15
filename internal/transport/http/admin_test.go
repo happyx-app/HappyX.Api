@@ -86,6 +86,7 @@ func TestAdmin(t *testing.T) {
 		{"PATCH", "/v1/guilds/" + a, `{"survey_enabled":true}`, 200},
 		{"POST", "/v1/guilds/" + a + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`, 201},
 		{"PUT", "/v1/guilds/" + a + "/dispatches/survey/2026-10-22", `{"recipients":2,"failed":3}`, 400},
+		{"PUT", "/v1/guilds/" + a + "/dispatches/survey/2026-10-22", `{"recipients":2,"failed":1,"closed_dms":2}`, 400},
 		{"PUT", "/v1/guilds/" + a + "/dispatches/survey/2026-10-22", `{"failed":1}`, 400},
 		{"PUT", "/v1/guilds/" + a + "/dispatches/nope/2026-10-22", `{"recipients":2}`, 400},
 		{"PUT", "/v1/guilds/" + a + "/dispatches/survey/2026-10-22", `{"recipients":2,"failed":1}`, 204},

@@ -50,7 +50,7 @@ func testServiceClock(t *testing.T, now usecase.Clock) *usecase.Service {
 	}
 	t.Cleanup(pool.Close)
 	reset(t, pool)
-	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool), NewGameRepo(pool), NewAccessRepo(pool), NewPrivacyRepo(pool), now).WithVacations(NewVacationRepo(pool)).WithTeamNotes(NewTeamNoteRepo(pool))
+	return usecase.NewService(NewGuildRepo(pool), NewMemberRepo(pool), NewMoodRepo(pool), NewDispatchRepo(pool), NewKudosRepo(pool), NewGameRepo(pool), NewAccessRepo(pool), NewPrivacyRepo(pool), now).WithVacations(NewVacationRepo(pool)).WithTeamNotes(NewTeamNoteRepo(pool)).WithChannelPosts(NewChannelPostRepo(pool))
 }
 
 func reset(t *testing.T, pool *pgxpool.Pool) {
@@ -550,7 +550,7 @@ func TestReleasedDispatchRetries(t *testing.T) {
 		if claim() {
 			t.Fatalf("try %d: a held claim can't be taken again", i)
 		}
-		if err := svc.FinishDispatch(ctx, guildA, domain.DispatchSurvey, day, 2, 2); err != nil {
+		if err := svc.FinishDispatch(ctx, guildA, domain.DispatchSurvey, day, 2, 2, 1); err != nil {
 			t.Fatal(err)
 		}
 		if err := release(); err != nil {

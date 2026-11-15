@@ -67,6 +67,15 @@ func TestVacationRoutes(t *testing.T) {
 	if got := surveyed(); got != other {
 		t.Fatalf("survey on vacation: %s", got)
 	}
+	// The day before, the vacation hadn't started: that day's survey went to both.
+	if _, ms := doList(t, srv, "GET", "/v1/guilds/"+guildA+"/members?for=survey&day=2026-10-21", ""); len(ms) != 2 {
+		t.Fatalf("recipients the day before: %v", ms)
+	}
+	for _, q := range []string{"?for=survey&day=21-10-2026", "?day=2026-10-21"} {
+		if code, _ := do(t, srv, "GET", "/v1/guilds/"+guildA+"/members"+q, key, ""); code != 400 {
+			t.Fatalf("%s: %d", q, code)
+		}
+	}
 	if code, out := doList(t, srv, "GET", "/v1/guilds/"+guildA+"/members/"+memberID+"/vacations", ""); code != 200 || len(out) != 1 || out[0]["from"] != "2026-10-22" {
 		t.Fatalf("bot reads vacations: %d %v", code, out)
 	}
@@ -115,8 +124,8 @@ func TestVacationRoutes(t *testing.T) {
 	if code, _ := send(t, o, "DELETE", srv.URL+"/web/guilds/"+guildA+"/me/vacation", "application/json", ""); code != 204 {
 		t.Fatalf("Olga removes it: %d", code)
 	}
-	if code, _ := do(t, srv, "DELETE", "/v1/guilds/"+guildA+"/members/"+memberID+"/vacations", key, ""); code != 204 {
-		t.Fatalf("resume ends vacations: %d", code)
+	if code, ended := doList(t, srv, "DELETE", "/v1/guilds/"+guildA+"/members/"+memberID+"/vacations", ""); code != 200 || len(ended) != 1 || ended[0]["to"] != "2026-10-22" {
+		t.Fatalf("resume ends vacations: %d %v", code, ended)
 	}
 	if code, out := doList(t, srv, "GET", "/v1/guilds/"+guildA+"/members/"+memberID+"/vacations", ""); code != 200 || len(out) != 0 {
 		t.Fatalf("after resume: %d %v", code, out)

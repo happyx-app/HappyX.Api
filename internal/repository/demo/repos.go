@@ -230,7 +230,7 @@ func (dispatches) Held(context.Context, string, domain.DispatchKind, time.Time) 
 func (dispatches) Release(context.Context, string, domain.DispatchKind, time.Time) error {
 	return ErrReadOnly
 }
-func (dispatches) Finish(context.Context, string, domain.DispatchKind, time.Time, int, int) error {
+func (dispatches) Finish(context.Context, string, domain.DispatchKind, time.Time, int, int, int) error {
 	return ErrReadOnly
 }
 

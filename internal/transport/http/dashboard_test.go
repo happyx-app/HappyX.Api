@@ -23,7 +23,7 @@ func TestWebDashboardInsights(t *testing.T) {
 		{"PUT", "/v1/guilds/" + guildA + "/members/" + other + "/mood", `{"mood":3}`},
 		{"PATCH", "/v1/guilds/" + guildA, `{"survey_enabled":true}`},
 		{"POST", "/v1/guilds/" + guildA + "/dispatches", `{"kind":"survey","period":"2026-10-22"}`},
-		{"PUT", "/v1/guilds/" + guildA + "/dispatches/survey/2026-10-22", `{"recipients":3,"failed":1}`},
+		{"PUT", "/v1/guilds/" + guildA + "/dispatches/survey/2026-10-22", `{"recipients":3,"failed":1,"closed_dms":1}`},
 		{"POST", "/v1/guilds/" + guildA + "/kudos", `{"from_discord_user_id":"` + memberID + `","to_discord_user_id":"` + other + `","message":"gracias"}`},
 		{"POST", "/v1/guilds/" + guildA + "/kudos", `{"from_discord_user_id":"` + memberID + `","to_discord_user_id":"` + other + `","message":"otra vez"}`},
 		{"POST", "/v1/guilds/" + guildA + "/kudos", `{"from_discord_user_id":"` + other + `","to_discord_user_id":"` + memberID + `","message":"a ti"}`},
@@ -61,8 +61,15 @@ func TestWebDashboardInsights(t *testing.T) {
 	if res.StatusCode != 200 || h["audience"] != 2.0 || h["opted_out"] != 1.0 {
 		t.Fatalf("health: %d %v", res.StatusCode, h)
 	}
-	if l := h["last_survey"].(map[string]any); l["day"] != "2026-10-22" || l["recipients"] != 3.0 || l["failed"] != 1.0 {
+	if l := h["last_survey"].(map[string]any); l["day"] != "2026-10-22" || l["recipients"] != 3.0 || l["failed"] != 1.0 || l["closed_dms"] != 1.0 {
 		t.Fatalf("last survey: %v", l)
+	}
+	// The bot reads the same for /happyx status.
+	if code, bh := do(t, srv, "GET", "/v1/guilds/"+guildA+"/health", key, ""); code != 200 || bh["audience"] != 2.0 || bh["last_survey"].(map[string]any)["closed_dms"] != 1.0 {
+		t.Fatalf("bot health: %d %v", code, bh)
+	}
+	if code, _ := do(t, srv, "GET", "/v1/guilds/999999999999999999/health", key, ""); code != 404 {
+		t.Fatalf("health of an unknown server: %d", code)
 	}
 
 	// Someone who can't see the server gets nothing.

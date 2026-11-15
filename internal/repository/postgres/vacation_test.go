@@ -130,11 +130,34 @@ func TestVacations(t *testing.T) {
 	if vs, err := svc.MemberVacations(ctx, guildA, user2); err != nil || len(vs) != 1 {
 		t.Fatalf("own vacation from the bot should apply everywhere: %+v %v", vs, err)
 	}
-	if err := svc.EndMemberVacations(ctx, guildA, user2); err != nil {
-		t.Fatal(err)
+	// Resuming removes one that starts today.
+	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 1 || !ended[0].To.Equal(day("2026-11-07")) {
+		t.Fatalf("resume: %+v %v", ended, err)
 	}
 	if vs, _ := svc.MemberVacations(ctx, guildB, user2); len(vs) != 0 {
 		t.Fatalf("resume left vacations: %+v", vs)
+	}
+	// Resuming during a vacation ends it yesterday, so the days gone stay vacation, and leaves the
+	// one planned for later alone, whoever set each.
+	if _, err := svc.SetMemberOwnVacation(ctx, guildA, user2, day("2026-11-04"), day("2026-11-10")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SetGuildVacation(ctx, owner, guildA, user2, day("2026-11-20"), day("2026-11-25")); err != nil {
+		t.Fatal(err)
+	}
+	ended, err := svc.EndMemberVacations(ctx, guildA, user2)
+	if err != nil || len(ended) != 1 || ended[0].GuildDiscordID != "" || !ended[0].To.Equal(day("2026-11-10")) {
+		t.Fatalf("resume during a vacation: %+v %v", ended, err)
+	}
+	if r := recipients(t, svc, guildA, usecase.MembersSurvey); !r[user2] {
+		t.Fatal("back from vacation but no survey today")
+	}
+	all, err := svc.MyVacations(ctx, domain.Viewer{DiscordID: user2})
+	if err != nil || len(all) != 2 || !all[0].To.Equal(day("2026-11-05")) || !all[1].From.Equal(day("2026-11-20")) {
+		t.Fatalf("after resume: %+v %v", all, err)
+	}
+	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 0 {
+		t.Fatalf("nothing to end: %+v %v", ended, err)
 	}
 
 	// Erasing someone's data takes their vacations.

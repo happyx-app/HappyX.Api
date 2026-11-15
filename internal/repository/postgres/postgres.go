@@ -886,7 +886,7 @@ func (r *DispatchRepo) Claim(ctx context.Context, guildID string, kind domain.Di
 
 func (r *DispatchRepo) ListFinished(ctx context.Context, guildID string, kind domain.DispatchKind, from, to time.Time) ([]domain.DispatchStat, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT d.period, d.recipients, coalesce(d.failed, 0) FROM dispatches d JOIN guilds g ON g.id = d.guild_id
+		SELECT d.period, d.recipients, coalesce(d.failed, 0), coalesce(d.closed_dms, 0) FROM dispatches d JOIN guilds g ON g.id = d.guild_id
 		WHERE g.discord_id = $1 AND d.kind = $2 AND d.period BETWEEN $3 AND $4 AND d.recipients IS NOT NULL
 		ORDER BY d.period`, guildID, string(kind), from, to)
 	if err != nil {
@@ -894,7 +894,7 @@ func (r *DispatchRepo) ListFinished(ctx context.Context, guildID string, kind do
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.DispatchStat, error) {
 		var d domain.DispatchStat
-		err := row.Scan(&d.Day, &d.Recipients, &d.Failed)
+		err := row.Scan(&d.Day, &d.Recipients, &d.Failed, &d.ClosedDMs)
 		return d, err
 	})
 }
@@ -923,12 +923,12 @@ func (r *DispatchRepo) Release(ctx context.Context, guildID string, kind domain.
 	return nil
 }
 
-func (r *DispatchRepo) Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error {
+func (r *DispatchRepo) Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed, closed int) error {
 	tag, err := r.db.Exec(ctx, `
-		UPDATE dispatches d SET recipients = $4, failed = $5, finished_at = now()
+		UPDATE dispatches d SET recipients = $4, failed = $5, closed_dms = $6, finished_at = now()
 		FROM guilds g
 		WHERE g.discord_id = $1 AND d.guild_id = g.id AND d.kind = $2 AND d.period = $3`,
-		guildID, string(kind), period, recipients, failed)
+		guildID, string(kind), period, recipients, failed, closed)
 	if err != nil {
 		return err
 	}

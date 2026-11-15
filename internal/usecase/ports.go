@@ -86,9 +86,10 @@ type DispatchRepository interface {
 	// Release gives back a claim whose send reached nobody, so it can be claimed again.
 	// domain.ErrNotFound when it wasn't claimed or is already released.
 	Release(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time) error
-	// Finish records how many people a claimed dispatch went to and how many DMs failed.
+	// Finish records how many people a claimed dispatch went to, how many DMs failed and, of
+	// those, how many because the person has DMs closed.
 	// domain.ErrNotFound when it wasn't claimed.
-	Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error
+	Finish(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed, closed int) error
 	// ListFinished returns the dispatches of kind with periods in [from, to] whose recipients
 	// the bot reported, oldest first.
 	ListFinished(ctx context.Context, guildID string, kind domain.DispatchKind, from, to time.Time) ([]domain.DispatchStat, error)
@@ -184,6 +185,10 @@ type VacationRepository interface {
 	// Delete removes the person's own vacation (guildID "") or the one set in guildID.
 	// domain.ErrNotFound when there is none.
 	Delete(ctx context.Context, userID, guildID string) error
+	// EndCovering ends the vacations that apply to the person in guildID, their own and the one
+	// set there, that cover day: they now end the day before, and one starting on day is removed.
+	// Later ones stay. It returns them as they were.
+	EndCovering(ctx context.Context, userID, guildID string, day time.Time) ([]domain.Vacation, error)
 	// ForUser returns the person's vacations that end on since or later: their own and the ones
 	// set in any guild, own first.
 	ForUser(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error)
@@ -215,4 +220,13 @@ type TeamNoteRepository interface {
 	Latest(ctx context.Context, guildID string, since, until time.Time) (domain.TeamNote, error)
 	// ForPeriod returns the last note about the report period from..to.
 	ForPeriod(ctx context.Context, guildID string, from, to time.Time) (domain.TeamNote, error)
+}
+
+// ChannelPostRepository stores the messages HappyX keeps in a channel, one of each kind per guild.
+type ChannelPostRepository interface {
+	Get(ctx context.Context, guildID, kind string) (domain.ChannelPost, error)
+	// Put stores where the guild's post of that kind is, replacing the one before. The guild
+	// must exist (domain.ErrNotFound if not).
+	Put(ctx context.Context, p domain.ChannelPost) (domain.ChannelPost, error)
+	Delete(ctx context.Context, guildID, kind string) error
 }
