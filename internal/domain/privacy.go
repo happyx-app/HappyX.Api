@@ -30,6 +30,8 @@ type MemberData struct {
 	GameGuesses   []MadeGuess
 	GameProposals []GameProposal
 	CanvasStrokes []CanvasStroke
+	// TeamNotes are what they told the team after a report, as an admin.
+	TeamNotes []TeamNote
 }
 
 // RoundAnswer is an answer to a «Who's who?» round, with the round's question.
@@ -62,6 +64,9 @@ type GuildData struct {
 	Answers []RoundAnswer
 	// CanvasStrokes are the team canvas' strokes, oldest first.
 	CanvasStrokes []CanvasStroke
+	// TeamNotes are what the admins told the team after reports, oldest first. They were
+	// published in a channel, so they leave with their authors.
+	TeamNotes []TeamNote
 }
 
 // GuildExport is a guild's data as its managers may download it.
@@ -79,6 +84,7 @@ type GuildExport struct {
 	Rounds            []ExportedRound
 	// CanvasStrokes are the team canvas' strokes with their authors, as moderators see them.
 	CanvasStrokes []CanvasStroke
+	TeamNotes     []TeamNote
 }
 
 // ExportedMood is a survey answer that names its author in a guild export.
@@ -122,7 +128,7 @@ type ExportedAnswer struct {
 //
 // today is the current date in the guild's timezone.
 func BuildGuildExport(d GuildData, today time.Time) GuildExport {
-	out := GuildExport{Guild: d.Guild, Members: d.Members, Kudos: d.Kudos, Moods: []ExportedMood{}, AnonymousDays: []ExportedDay{}, AnonymousComments: []string{}, Rounds: []ExportedRound{}, CanvasStrokes: d.CanvasStrokes}
+	out := GuildExport{Guild: d.Guild, Members: d.Members, Kudos: d.Kudos, Moods: []ExportedMood{}, AnonymousDays: []ExportedDay{}, AnonymousComments: []string{}, Rounds: []ExportedRound{}, CanvasStrokes: d.CanvasStrokes, TeamNotes: d.TeamNotes}
 
 	named := map[string]string{}
 	if !d.Guild.Settings.Anonymous {

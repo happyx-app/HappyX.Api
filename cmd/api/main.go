@@ -51,7 +51,8 @@ func run(log *slog.Logger) error {
 		postgres.NewMoodRepo(pool), postgres.NewDispatchRepo(pool), postgres.NewKudosRepo(pool), postgres.NewGameRepo(pool), postgres.NewAccessRepo(pool),
 		postgres.NewPrivacyRepo(pool),
 		time.Now,
-	).WithCanvas(postgres.NewCanvasRepo(pool)).WithVacations(postgres.NewVacationRepo(pool))
+	).WithCanvas(postgres.NewCanvasRepo(pool)).WithVacations(postgres.NewVacationRepo(pool)).
+		WithTeamNotes(postgres.NewTeamNoteRepo(pool))
 	api := httpapi.NewServer(svc, cfg.ServiceKeyHashes, log)
 	if w := cfg.Web; w != nil {
 		api.WithWeb(httpapi.Web{

@@ -30,6 +30,9 @@ type Report struct {
 	// Participation compares answers with surveys sent, on the days the bot reported how many
 	// people it sent the survey to. Nil when it reported none in the period.
 	Participation *Participation
+	// Audience is how many people get the survey now (see GuildHealth.Audience), to say how many
+	// of them answered. 0 when unknown.
+	Audience int
 }
 
 // Participation is how many survey DMs went out and how many of them got an answer.

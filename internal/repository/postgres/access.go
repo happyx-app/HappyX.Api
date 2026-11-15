@@ -103,6 +103,10 @@ func (r *AccessRepo) ReplaceChannels(ctx context.Context, guildID string, channe
 	if _, err := tx.Exec(ctx, `UPDATE guilds SET kudos_channel_id = '' WHERE id = $1 AND kudos_channel_id <> '' AND NOT kudos_channel_id = ANY($2)`, gid, ids); err != nil {
 		return err
 	}
+	// Likewise a deleted team channel goes back to the kudos channel.
+	if _, err := tx.Exec(ctx, `UPDATE guilds SET team_channel_id = '' WHERE id = $1 AND team_channel_id <> '' AND NOT team_channel_id = ANY($2)`, gid, ids); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
