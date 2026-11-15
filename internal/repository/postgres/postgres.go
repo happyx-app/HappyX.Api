@@ -391,7 +391,7 @@ func scanMood(row pgx.Row) (domain.MoodEntry, error) {
 	return e, notFound(err)
 }
 
-func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry) (domain.MoodEntry, error) {
+func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry, keepMessage bool) (domain.MoodEntry, error) {
 	// The member lookup is scoped to the guild, so an entry can never be attached to
 	// another guild's member. The entry takes the guild's anonymity at the moment it is
 	// written: answering again after the guild went public makes that answer public.
@@ -405,12 +405,14 @@ func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry) (domain.MoodE
 		         INSERT INTO mood_entries (guild_id, member_id, day, mood, message, anonymous)
 		         SELECT t.guild_id, t.member_id, $3, $4, $5, t.anonymous FROM t
 		         ON CONFLICT (member_id, day) DO UPDATE
-		         SET mood = EXCLUDED.mood, message = EXCLUDED.message, anonymous = EXCLUDED.anonymous, updated_at = now()
+		         SET mood = EXCLUDED.mood,
+		             message = CASE WHEN $6 THEN mood_entries.message ELSE EXCLUDED.message END,
+		             anonymous = EXCLUDED.anonymous, updated_at = now()
 		         RETURNING *
 		     )
 		SELECT t.guild_discord_id, t.member_discord_id, e.day, e.mood, e.message, e.anonymous, e.created_at, e.updated_at
 		FROM e JOIN t ON t.member_id = e.member_id`,
-		e.GuildDiscordID, e.MemberDiscordID, e.Day, int16(e.Mood), e.Message))
+		e.GuildDiscordID, e.MemberDiscordID, e.Day, int16(e.Mood), e.Message, keepMessage))
 }
 
 func (r *MoodRepo) ListBetween(ctx context.Context, guildID string, from, to time.Time) ([]domain.MoodEntry, error) {

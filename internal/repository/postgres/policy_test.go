@@ -13,7 +13,8 @@ import (
 // that guild: members who answered only before it see the link too.
 func TestMembersPolicyPending(t *testing.T) {
 	policy := usecase.PrivacyPolicyDate
-	svc := testService(t, policy.AddDate(0, 0, 3).Add(12*time.Hour))
+	clock := &testClock{now: policy.AddDate(0, 0, 3).Add(12 * time.Hour)}
+	svc := testServiceClock(t, clock.Now)
 	ctx := context.Background()
 	mustRegister(t, svc, guildA)
 	mustRegister(t, svc, guildB)
@@ -27,11 +28,7 @@ func TestMembersPolicyPending(t *testing.T) {
 		mustJoin(t, svc, guildA, u)
 	}
 	mustJoin(t, svc, guildB, other)
-	answer := func(guild, user string, day time.Time) {
-		if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guild, UserID: user, Mood: domain.MoodGood, Day: day}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	answer := func(guild, user string, day time.Time) { answerOn(t, svc, clock, guild, user, day, domain.MoodGood) }
 	answer(guildA, before, policy.AddDate(0, 0, -1))
 	answer(guildA, after, policy)
 	answer(guildB, other, policy.AddDate(0, 0, 1))

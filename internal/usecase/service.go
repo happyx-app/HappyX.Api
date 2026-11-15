@@ -354,7 +354,11 @@ type RecordMoodInput struct {
 	UserID  string
 	Mood    domain.Mood
 	Message string
-	// Day is optional; when zero, today in the guild's timezone is used.
+	// KeepMessage leaves the comment already stored for that day as it is, so changing the
+	// mood doesn't drop it. Message is then ignored.
+	KeepMessage bool
+	// Day is optional; when zero, today in the guild's timezone is used. Only today and
+	// yesterday can be answered: a survey is open until the next one arrives.
 	Day time.Time
 }
 
@@ -376,9 +380,13 @@ func (s *Service) RecordMood(ctx context.Context, in RecordMoodInput) (domain.Mo
 		day = today
 	}
 	day = domain.TruncateDay(day)
-	// Late answers to yesterday's survey are fine; the future is not.
+	// Late answers to yesterday's survey are fine; older days and the future are not, so
+	// a forgotten survey can't change a period already reported.
 	if day.After(today) {
 		return domain.MoodEntry{}, domain.ValidationError{Reason: "day cannot be in the future"}
+	}
+	if day.Before(today.AddDate(0, 0, -1)) {
+		return domain.MoodEntry{}, domain.ValidationError{Reason: "day is too old: only today and yesterday can be answered"}
 	}
 	e := domain.MoodEntry{
 		GuildDiscordID:  in.GuildID,
@@ -390,7 +398,7 @@ func (s *Service) RecordMood(ctx context.Context, in RecordMoodInput) (domain.Mo
 	if err := e.Validate(); err != nil {
 		return domain.MoodEntry{}, err
 	}
-	return s.moods.Upsert(ctx, e)
+	return s.moods.Upsert(ctx, e, in.KeepMessage)
 }
 
 // --- Kudos ---
