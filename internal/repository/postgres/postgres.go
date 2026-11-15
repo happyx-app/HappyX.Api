@@ -76,16 +76,24 @@ func NewGuildRepo(db *pgxpool.Pool) *GuildRepo { return &GuildRepo{db: db} }
 
 const guildCols = `discord_id, name, admin_discord_id, anonymous, timezone, survey_hour,
 	report_frequency, report_dm, language, kudos_channel_id, games_enabled, working_days, survey_message,
-	survey_roles_mode, survey_role_ids, game_roles_mode, game_role_ids, canvas_enabled, survey_enabled, active, created_at, updated_at`
+	survey_roles_mode, survey_role_ids, game_roles_mode, game_role_ids, canvas_enabled, survey_enabled,
+	anonymity_threshold, named_since, active, created_at, updated_at`
 
 func scanGuild(row pgx.Row) (domain.Guild, error) {
 	var g domain.Guild
 	var freq string
 	var workingDays int16
 	var surveyMode, gameMode string
+	var threshold int16
+	var namedSince *time.Time
 	err := row.Scan(&g.DiscordID, &g.Name, &g.AdminDiscordID, &g.Settings.Anonymous,
 		&g.Settings.Timezone, &g.Settings.SurveyHour, &freq, &g.Settings.ReportDM, &g.Settings.Language, &g.Settings.KudosChannelID, &g.Settings.GamesEnabled, &workingDays, &g.Settings.SurveyMessage,
-		&surveyMode, &g.Settings.SurveyRoles.RoleIDs, &gameMode, &g.Settings.GameRoles.RoleIDs, &g.Settings.CanvasEnabled, &g.Settings.SurveyEnabled, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+		&surveyMode, &g.Settings.SurveyRoles.RoleIDs, &gameMode, &g.Settings.GameRoles.RoleIDs, &g.Settings.CanvasEnabled, &g.Settings.SurveyEnabled,
+		&threshold, &namedSince, &g.Active, &g.CreatedAt, &g.UpdatedAt)
+	g.Settings.AnonymityThreshold = int(threshold)
+	if namedSince != nil {
+		g.Settings.NamedSince = domain.TruncateDay(*namedSince)
+	}
 	g.Settings.ReportFrequency = domain.ReportFrequency(freq)
 	g.Settings.SurveyRoles.Mode = domain.RoleFilterMode(surveyMode)
 	g.Settings.GameRoles.Mode = domain.RoleFilterMode(gameMode)
@@ -160,12 +168,20 @@ func (r *GuildRepo) UpdateConfig(ctx context.Context, guildID, adminID string, s
 		       report_frequency = $6, language = $7, kudos_channel_id = $8, games_enabled = $9,
 		       working_days = $10, survey_message = $11, report_dm = $12,
 		       survey_roles_mode = $13, survey_role_ids = $14, game_roles_mode = $15, game_role_ids = $16,
-		       canvas_enabled = $17, survey_enabled = $18, updated_at = now()
+		       canvas_enabled = $17, survey_enabled = $18, anonymity_threshold = $19, named_since = $20, updated_at = now()
 		WHERE discord_id = $1
 		RETURNING `+guildCols,
 		guildID, adminID, s.Anonymous, s.Timezone, s.SurveyHour, string(s.ReportFrequency), s.Language, s.KudosChannelID, s.GamesEnabled,
 		int16(s.WorkingDays), s.SurveyMessage, s.ReportDM, filterMode(s.SurveyRoles), filterRoleIDs(s.SurveyRoles),
-		filterMode(s.GameRoles), filterRoleIDs(s.GameRoles), s.CanvasEnabled, s.SurveyEnabled))
+		filterMode(s.GameRoles), filterRoleIDs(s.GameRoles), s.CanvasEnabled, s.SurveyEnabled, int16(s.AnonymityThreshold), nullDay(s.NamedSince)))
+}
+
+// nullDay stores a zero day as NULL.
+func nullDay(d time.Time) *time.Time {
+	if d.IsZero() {
+		return nil
+	}
+	return &d
 }
 
 // filterMode and filterRoleIDs store role filters that were never set as everyone.
@@ -393,11 +409,14 @@ func scanMood(row pgx.Row) (domain.MoodEntry, error) {
 
 func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry, keepMessage bool) (domain.MoodEntry, error) {
 	// The member lookup is scoped to the guild, so an entry can never be attached to
-	// another guild's member. The entry takes the guild's anonymity at the moment it is
-	// written: answering again after the guild went public makes that answer public.
+	// another guild's member. The entry takes the guild's anonymity for its day at the moment
+	// it is written (see GuildSettings.AnonymousOn): answering again for a day after the guild
+	// went public makes that answer public.
 	return scanMood(r.db.QueryRow(ctx, `
 		WITH t AS (
-		         SELECT g.id AS guild_id, g.discord_id AS guild_discord_id, g.anonymous, m.id AS member_id, m.discord_id AS member_discord_id
+		         SELECT g.id AS guild_id, g.discord_id AS guild_discord_id,
+		                g.anonymous OR (g.named_since IS NOT NULL AND $3::date < g.named_since) AS anonymous,
+		                m.id AS member_id, m.discord_id AS member_discord_id
 		         FROM members m JOIN guilds g ON g.id = m.guild_id
 		         WHERE g.discord_id = $1 AND m.discord_id = $2
 		     ),

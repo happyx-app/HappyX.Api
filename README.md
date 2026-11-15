@@ -56,9 +56,20 @@ Guilds are anonymous by default: reports include messages but never who wrote th
 turn this off with `PATCH /v1/guilds/{guildID}` `{"anonymous": false}`.
 
 Each answer remembers whether the guild was anonymous when it was given. Turning anonymity off
-only names the answers given from then on; earlier answers stay anonymous for good. A member who
-answers the same day again after the switch replaces their answer, which is then named. Turning
-anonymity back on hides every author again.
+names answers from the next day on (`named_since` on the guild), so nobody answers today thinking
+they are anonymous; earlier answers stay anonymous for good, also when they are changed later.
+Turning anonymity back on hides every author again.
+
+Anonymous comments come with their text only: no day and no mood, in an order unrelated to when
+they were written that stays the same between readings. In a small team, the day or the face
+would point to the author.
+
+**Anonymity threshold.** `anonymity_threshold` (default 3, from 3 to 50) is the fewest people who
+must have answered before a report shows anything but counts. When a period's anonymous answers
+come from fewer people, the report has `withheld: true`: `responses` and `respondents` stay, the
+average, the distribution, each day's average and the comments are left out. A day whose anonymous
+answers come from fewer people has `withheld: true` and no average either. The bot and the
+dashboard read the same report, so both apply it.
 
 Kudos are the exception: they are public thanks posted in the server with both names, so reports
 list them with names whatever the setting.
@@ -89,8 +100,9 @@ routes, 404 on the web) and don't see the game in `/web/me`.
 Admins can write their own text for the daily survey (`survey_message`, at most 500 characters).
 It is sent as written, in the language it was written in; empty means the default text in the
 guild's language. It may use these variables, which the bot fills in for each person:
-`{{user.name}}`, `{{user.mention}}`, `{{user.streak}}`, `{{guild.name}}`, `{{date}}` and
-`{{weekday}}`. Any other `{{...}}` is rejected with 400, so a typo never reaches members. The
+`{{user.name}}`, `{{user.mention}}`, `{{guild.name}}`, `{{date}}` and `{{weekday}}`. Any other
+`{{...}}` is rejected with 400, so a typo never reaches members. `{{user.streak}}` is retired: a
+message saved with it keeps working, but a new or changed message can't use it. The
 anonymity notice, the mood buttons and «Don't ask me again» are always added by the bot below it.
 
 ### «Who's who?» game
@@ -200,7 +212,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | POST | `/web/guilds/{guildID}/canvas/strokes` | `drawing_id` (1-36 letters, digits, `-`, `_`), `color` (`0`-`4`), `anchor` (`[x, y]`, 0 to 1), `points` (2 to 500 points, within 4000 px of the anchor): 201 with `{stroke, version}`. 409 while the canvas is off or full, 429 past 60 a minute. Needs `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}/canvas/drawings/{drawingID}` | erases a drawing: the user's own, or any for moderators. `{version}`; 404 if there is nothing of theirs to erase. Needs `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}/canvas` | erases the whole canvas. `{version}`. Needs **manage** and `Content-Type: application/json` |
-| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `timezone`, `survey_hour`, `report_frequency`, `survey_enabled`, `report_dm`, `language`, `games_enabled`, `canvas_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
+| PATCH | `/web/guilds/{guildID}/settings` | any of `anonymous`, `anonymity_threshold`, `timezone`, `survey_hour`, `report_frequency`, `survey_enabled`, `report_dm`, `language`, `games_enabled`, `canvas_enabled`, `kudos_channel_id` (one of `/channels`; `""` posts the card where `/happyx kudos` is used), `working_days`, `survey_message` (see «Custom survey message»; `""` goes back to the default), `survey_roles` and `game_roles` (see «Survey roles»). Same rules as the `/v1` PATCH; the main admin changes in `/access`. Needs **manage** and `Content-Type: application/json`; 403 for **view** |
 | GET | `/web/guilds/{guildID}/roles` | the server's Discord roles (`id`, `name`, `color`, `position`, highest first), for the settings' pickers. Needs **manage** |
 | GET | `/web/guilds/{guildID}/channels` | the server's text and announcement channels (`id`, `name`, `category`, `position`, `can_post`), in Discord's order, for the kudos channel picker. Needs **manage** |
 | GET | `/web/guilds/{guildID}/access` | `{admin_discord_user_id, grants, roles, members}`: `grants` are `{kind: "user"\|"role", id, level: "view"\|"manage"}`; `roles` (`id`, `name`, `color`, `position`, highest first) and `members` (still in the server, by name) are what can be picked. Needs **owner** |

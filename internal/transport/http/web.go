@@ -348,27 +348,28 @@ func (s *Server) webUpdateSettings(w http.ResponseWriter, r *http.Request, v dom
 		return
 	}
 	var in struct {
-		Anonymous       *bool          `json:"anonymous"`
-		SurveyEnabled   *bool          `json:"survey_enabled"`
-		Timezone        *string        `json:"timezone"`
-		Language        *string        `json:"language"`
-		SurveyHour      *int           `json:"survey_hour"`
-		ReportFrequency *string        `json:"report_frequency"`
-		ReportDM        *bool          `json:"report_dm"`
-		GamesEnabled    *bool          `json:"games_enabled"`
-		KudosChannelID  *string        `json:"kudos_channel_id"` // "" posts where the command is used
-		WorkingDays     *[]int         `json:"working_days"`
-		SurveyMessage   *string        `json:"survey_message"` // "" goes back to the default text
-		SurveyRoles     *roleFilterDTO `json:"survey_roles"`
-		GameRoles       *roleFilterDTO `json:"game_roles"`
-		CanvasEnabled   *bool          `json:"canvas_enabled"`
+		Anonymous          *bool          `json:"anonymous"`
+		AnonymityThreshold *int           `json:"anonymity_threshold"`
+		SurveyEnabled      *bool          `json:"survey_enabled"`
+		Timezone           *string        `json:"timezone"`
+		Language           *string        `json:"language"`
+		SurveyHour         *int           `json:"survey_hour"`
+		ReportFrequency    *string        `json:"report_frequency"`
+		ReportDM           *bool          `json:"report_dm"`
+		GamesEnabled       *bool          `json:"games_enabled"`
+		KudosChannelID     *string        `json:"kudos_channel_id"` // "" posts where the command is used
+		WorkingDays        *[]int         `json:"working_days"`
+		SurveyMessage      *string        `json:"survey_message"` // "" goes back to the default text
+		SurveyRoles        *roleFilterDTO `json:"survey_roles"`
+		GameRoles          *roleFilterDTO `json:"game_roles"`
+		CanvasEnabled      *bool          `json:"canvas_enabled"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
 	p := usecase.SettingsPatch{
-		SurveyEnabled: in.SurveyEnabled,
-		Anonymous:     in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
+		SurveyEnabled: in.SurveyEnabled, AnonymityThreshold: in.AnonymityThreshold,
+		Anonymous: in.Anonymous, Timezone: in.Timezone, Language: in.Language, SurveyHour: in.SurveyHour,
 		GamesEnabled: in.GamesEnabled, KudosChannelID: in.KudosChannelID, SurveyMessage: in.SurveyMessage, ReportDM: in.ReportDM,
 		SurveyRoles: in.SurveyRoles.patch(), GameRoles: in.GameRoles.patch(), CanvasEnabled: in.CanvasEnabled,
 	}
@@ -523,12 +524,14 @@ type evolutionDTO struct {
 	DiscordGuildID string `json:"discord_guild_id"`
 	Name           string `json:"name"`
 	Timezone       string `json:"timezone"`
-	// Anonymous is the server's current mode, so members can see whether the admin sees who answers.
-	Anonymous bool        `json:"anonymous"`
-	Responses int         `json:"responses"`
-	Average   float64     `json:"average"`
-	Streak    int         `json:"streak"`
-	Entries   []myMoodDTO `json:"entries"`
+	// Anonymous is whether today's answer is anonymous, so members can see whether the admin
+	// sees who answers. NamedSince, once anonymity was turned off, is the first day with names.
+	Anonymous  bool        `json:"anonymous"`
+	NamedSince string      `json:"named_since,omitempty"`
+	Responses  int         `json:"responses"`
+	Average    float64     `json:"average"`
+	Streak     int         `json:"streak"`
+	Entries    []myMoodDTO `json:"entries"`
 }
 
 type myMoodDTO struct {
@@ -574,8 +577,11 @@ func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Vie
 	}{from.Format(dateLayout), to.Format(dateLayout), []evolutionDTO{}}
 	for _, ev := range evs {
 		d := evolutionDTO{
-			DiscordGuildID: ev.Guild.DiscordID, Name: ev.Guild.Name, Timezone: ev.Guild.Settings.Timezone, Anonymous: ev.Guild.Settings.Anonymous,
+			DiscordGuildID: ev.Guild.DiscordID, Name: ev.Guild.Name, Timezone: ev.Guild.Settings.Timezone, Anonymous: ev.AnonymousToday,
 			Responses: ev.Responses, Average: ev.Average, Streak: ev.Streak, Entries: []myMoodDTO{},
+		}
+		if n := ev.Guild.Settings.NamedSince; !n.IsZero() {
+			d.NamedSince = n.Format(dateLayout)
 		}
 		for _, e := range ev.Entries {
 			d.Entries = append(d.Entries, myMoodDTO{Day: e.Day.Format(dateLayout), Mood: int(e.Mood), Message: e.Message})

@@ -117,12 +117,20 @@ func TestMoodFlow(t *testing.T) {
 	}
 
 	code, rep := do(t, srv, "GET", "/v1/guilds/"+g+"/report?from=2026-10-22&to=2026-10-22", key, "")
-	if code != 200 || rep["responses"].(float64) != 1 || rep["average"].(float64) != 4 {
+	// One person answered: below the anonymity threshold, only the count is given.
+	if code != 200 || rep["responses"].(float64) != 1 || rep["withheld"] != true || rep["average"].(float64) != 0 || rep["anonymity_threshold"].(float64) != 3 {
 		t.Fatalf("report: %d %v", code, rep)
 	}
-	msgs := rep["messages"].([]any)
-	if m := msgs[0].(map[string]any); m["discord_user_id"] != nil || m["message"] != "bien" {
-		t.Fatalf("anonymous report should hide the author: %v", m)
+	if msgs := rep["messages"].([]any); len(msgs) != 0 {
+		t.Fatalf("a withheld report shows comments: %v", msgs)
+	}
+	for _, s := range []struct {
+		body string
+		want int
+	}{{`{"anonymity_threshold":5}`, 200}, {`{"anonymity_threshold":2}`, 400}} {
+		if code, body := do(t, srv, "PATCH", "/v1/guilds/"+g, key, s.body); code != s.want {
+			t.Fatalf("%s: %d %v", s.body, code, body)
+		}
 	}
 }
 

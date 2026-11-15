@@ -72,13 +72,15 @@ func (s *Service) ListActiveGuilds(ctx context.Context) ([]domain.Guild, error) 
 
 // SettingsPatch carries optional changes; nil fields are left untouched.
 type SettingsPatch struct {
-	Anonymous       *bool
-	Timezone        *string
-	Language        *string
-	SurveyHour      *int
-	ReportFrequency *domain.ReportFrequency
-	ReportDM        *bool
-	AdminDiscordID  *string
+	// Anonymous set to false names the answers from the next day on (see GuildSettings.NamedSince).
+	Anonymous          *bool
+	AnonymityThreshold *int
+	Timezone           *string
+	Language           *string
+	SurveyHour         *int
+	ReportFrequency    *domain.ReportFrequency
+	ReportDM           *bool
+	AdminDiscordID     *string
 	// KudosChannelID set to "" goes back to posting where the command is used. Otherwise it must
 	// be one of the guild's channels.
 	KudosChannelID *string
@@ -134,12 +136,29 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	}
 	if p.SurveyMessage != nil {
 		st.SurveyMessage = strings.TrimSpace(*p.SurveyMessage)
+		if st.SurveyMessage != g.Settings.SurveyMessage {
+			if err := domain.CheckNewSurveyMessage(st.SurveyMessage); err != nil {
+				return domain.Guild{}, err
+			}
+		}
 	}
 	if p.CanvasEnabled != nil {
 		st.CanvasEnabled = *p.CanvasEnabled
 	}
 	if p.SurveyEnabled != nil {
 		st.SurveyEnabled = *p.SurveyEnabled
+	}
+	if p.AnonymityThreshold != nil {
+		st.AnonymityThreshold = *p.AnonymityThreshold
+	}
+	switch {
+	case st.Anonymous:
+		st.NamedSince = time.Time{}
+	case g.Settings.Anonymous:
+		// Today's answers were given as anonymous, and stay so: names start tomorrow.
+		named := g
+		named.Settings.Timezone = st.Timezone
+		st.NamedSince = s.today(named).AddDate(0, 0, 1)
 	}
 	for _, f := range []struct {
 		field string

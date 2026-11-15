@@ -64,10 +64,11 @@ func TestWebPrivacy(t *testing.T) {
 
 	admin := newWebClient(t)
 	login(t, srv, admin, "adminA")
-	// Mia answered while anonymous; Bea after the server went public.
-	if code, out := patchSettings(t, srv, admin, guildA, jsonCT, `{"anonymous":false,"games_enabled":true}`); code != 200 {
+	// Mia answered while anonymous; Bea the day after the server went public.
+	if code, out := patchSettings(t, srv, admin, guildA, jsonCT, `{"anonymous":false,"games_enabled":true}`); code != 200 || out["named_since"] != "2026-10-20" {
 		t.Fatalf("settings: %d %v", code, out)
 	}
+	now = now.AddDate(0, 0, 1)
 	bot("PUT", "/v1/guilds/"+guildA+"/members/"+bea+"/mood", `{"mood":5,"message":"público"}`)
 	bot("POST", "/v1/guilds/"+guildA+"/game/rounds", `{"week":"2026-10-19","question":"¿Qué querías ser?"}`)
 	for u, a := range map[string]string{memberID: "Bombera", bea: "Astronauta", cris: "Pastelero"} {

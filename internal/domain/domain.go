@@ -61,6 +61,13 @@ type Guild struct {
 type GuildSettings struct {
 	// Anonymous hides who answered what in reports. Defaults to true.
 	Anonymous bool
+	// NamedSince is the first day answers carry their author's name, set when anonymity is
+	// turned off: the change applies from the next day, so nobody answers today believing they
+	// are anonymous when they are not. Zero while the guild is anonymous.
+	NamedSince time.Time
+	// AnonymityThreshold is the fewest people who must have answered before a report shows the
+	// average, the moods or the comments of anonymous answers. At least MinAnonymityThreshold.
+	AnonymityThreshold int
 	// SurveyEnabled sends the daily survey and the «Who's who?» game. A new server starts with it
 	// off, until the admin starts the survey from the setup assistant or the web. Reports and
 	// kudos don't depend on it.
@@ -137,17 +144,31 @@ func (s GuildSettings) IsWorkingDay(day time.Time) bool {
 	return w.Has(day.Weekday())
 }
 
+// MinAnonymityThreshold and MaxAnonymityThreshold bound AnonymityThreshold. Below 3, one person
+// could work out what the other answered from the average.
+const (
+	MinAnonymityThreshold = 3
+	MaxAnonymityThreshold = 50
+)
+
+// AnonymousOn reports whether an answer for day is anonymous: always while the guild is, and,
+// once it turned anonymity off, for the days before NamedSince.
+func (s GuildSettings) AnonymousOn(day time.Time) bool {
+	return s.Anonymous || TruncateDay(day).Before(s.NamedSince)
+}
+
 func DefaultGuildSettings() GuildSettings {
 	return GuildSettings{
-		Anonymous:       true,
-		Timezone:        "Europe/Madrid",
-		SurveyHour:      13,
-		ReportFrequency: ReportWeekly,
-		ReportDM:        true,
-		Language:        "en",
-		WorkingDays:     MondayToFriday,
-		SurveyRoles:     RoleFilter{Mode: RolesEveryone},
-		GameRoles:       RoleFilter{Mode: RolesEveryone},
+		Anonymous:          true,
+		AnonymityThreshold: MinAnonymityThreshold,
+		Timezone:           "Europe/Madrid",
+		SurveyHour:         13,
+		ReportFrequency:    ReportWeekly,
+		ReportDM:           true,
+		Language:           "en",
+		WorkingDays:        MondayToFriday,
+		SurveyRoles:        RoleFilter{Mode: RolesEveryone},
+		GameRoles:          RoleFilter{Mode: RolesEveryone},
 	}
 }
 
@@ -157,6 +178,9 @@ func (s GuildSettings) Validate() error {
 	}
 	if _, err := time.LoadLocation(s.Timezone); err != nil || s.Timezone == "" {
 		return invalid("unknown timezone %q", s.Timezone)
+	}
+	if s.AnonymityThreshold < MinAnonymityThreshold || s.AnonymityThreshold > MaxAnonymityThreshold {
+		return invalid("anonymity_threshold must be between %d and %d", MinAnonymityThreshold, MaxAnonymityThreshold)
 	}
 	if !validLanguage(s.Language) {
 		return invalid("language must be a code like \"en\" or \"pt-BR\"")

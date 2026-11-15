@@ -174,11 +174,12 @@ func TestWebDashboard(t *testing.T) {
 		t.Fatalf("admin A guilds: %v", me)
 	}
 	res, rep := get(t, a, srv.URL+"/web/guilds/"+guildA+report)
-	if res.StatusCode != 200 || rep["average"].(float64) != 5 {
+	// One answer is below the anonymity threshold: the dashboard gets only the count.
+	if res.StatusCode != 200 || rep["responses"].(float64) != 1 || rep["withheld"] != true || rep["average"].(float64) != 0 {
 		t.Fatalf("admin A report: %d %v", res.StatusCode, rep)
 	}
-	if m := rep["messages"].([]any)[0].(map[string]any); m["discord_user_id"] != nil {
-		t.Fatalf("dashboard must keep reports anonymous: %v", m)
+	if msgs := rep["messages"].([]any); len(msgs) != 0 {
+		t.Fatalf("dashboard must keep reports anonymous: %v", msgs)
 	}
 	if res, _ := get(t, a, srv.URL+"/web/guilds/"+guildB+report); res.StatusCode != 404 {
 		t.Fatalf("admin A reading guild B: %d", res.StatusCode)
@@ -193,7 +194,7 @@ func TestWebDashboard(t *testing.T) {
 	if _, me := get(t, b, srv.URL+"/web/me"); strings.Join(guildIDs(me), ",") != guildB {
 		t.Fatalf("manager B guilds: %v", me)
 	}
-	if res, rep := get(t, b, srv.URL+"/web/guilds/"+guildB+report); res.StatusCode != 200 || rep["average"].(float64) != 2 {
+	if res, rep := get(t, b, srv.URL+"/web/guilds/"+guildB+report); res.StatusCode != 200 || rep["responses"].(float64) != 1 || rep["withheld"] != true {
 		t.Fatalf("manager B report: %d %v", res.StatusCode, rep)
 	}
 	if res, _ := get(t, b, srv.URL+"/web/guilds/"+guildA+report); res.StatusCode != 404 {
