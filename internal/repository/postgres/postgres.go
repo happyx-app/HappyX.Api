@@ -413,8 +413,9 @@ func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry, keepMessage b
 	// The member lookup is scoped to the guild, so an entry can never be attached to
 	// another guild's member. The entry takes the guild's anonymity for its day at the moment
 	// it is written (see GuildSettings.AnonymousOn): answering again for a day after the guild
-	// went public makes that answer public. It also takes the guild's anonymity threshold, so
-	// lowering it later doesn't show days that were answered under a higher one.
+	// went public makes that answer public. It also keeps the highest anonymity threshold it was
+	// given under, so lowering the threshold later, even before changing the answer, doesn't show
+	// a day that was answered under a higher one.
 	return scanMood(r.db.QueryRow(ctx, `
 		WITH t AS (
 		         SELECT g.id AS guild_id, g.discord_id AS guild_discord_id,
@@ -430,7 +431,8 @@ func (r *MoodRepo) Upsert(ctx context.Context, e domain.MoodEntry, keepMessage b
 		         ON CONFLICT (member_id, day) DO UPDATE
 		         SET mood = EXCLUDED.mood,
 		             message = CASE WHEN $6 THEN mood_entries.message ELSE EXCLUDED.message END,
-		             anonymous = EXCLUDED.anonymous, anonymity_threshold = EXCLUDED.anonymity_threshold,
+		             anonymous = EXCLUDED.anonymous,
+		             anonymity_threshold = GREATEST(mood_entries.anonymity_threshold, EXCLUDED.anonymity_threshold),
 		             updated_at = now()
 		         RETURNING *
 		     )

@@ -176,6 +176,8 @@ type dayDTO struct {
 	Average   float64 `json:"average"` // 0 when withheld
 	// Withheld: that day's anonymous answers came from fewer people than the threshold.
 	Withheld bool `json:"withheld"`
+	// AnonymityThreshold is the one the day was judged by; left out on a day without answers.
+	AnonymityThreshold int `json:"anonymity_threshold,omitempty"`
 	// Recipients is how many people got that day's survey; left out when unknown.
 	Recipients *int `json:"recipients,omitempty"`
 }
@@ -542,7 +544,7 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		out.Distribution[strconv.Itoa(int(m))] = n
 	}
 	for _, d := range rep.Days {
-		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average, Withheld: d.Withheld, Recipients: d.Recipients})
+		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average, Withheld: d.Withheld, AnonymityThreshold: d.AnonymityThreshold, Recipients: d.Recipients})
 	}
 	for _, m := range rep.Messages {
 		msg := reportMsgDTO{Message: m.Message, DiscordID: m.MemberDiscordID, Username: m.Username}

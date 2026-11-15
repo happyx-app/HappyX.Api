@@ -156,8 +156,13 @@ func TestBuildReportLeavesWithheldDaysOut(t *testing.T) {
 		{MemberDiscordID: userB, Day: day("2026-10-20"), Mood: MoodBad, AnonymityThreshold: 3},
 		{MemberDiscordID: userC, Day: day("2026-10-20"), Mood: MoodBad, AnonymityThreshold: 3},
 	}
-	if r := BuildReport(g, day("2026-10-19"), day("2026-10-20"), strict, nil); !r.Days[0].Withheld || r.Days[1].Withheld || r.Average != 2 {
+	r := BuildReport(g, day("2026-10-19"), day("2026-10-20"), strict, nil)
+	if !r.Days[0].Withheld || r.Days[1].Withheld || r.Average != 2 {
 		t.Fatalf("a day answered under a threshold of 5 shows with 3 people: %+v", r)
+	}
+	// Each day says the threshold it was judged by, and the report the highest withheld one.
+	if r.Days[0].AnonymityThreshold != 5 || r.Days[1].AnonymityThreshold != 3 || r.AnonymityThreshold != 5 {
+		t.Fatalf("thresholds: report %d, days %d and %d", r.AnonymityThreshold, r.Days[0].AnonymityThreshold, r.Days[1].AnonymityThreshold)
 	}
 
 	// Three people, never three on the same day: nothing can be shown.

@@ -13,9 +13,9 @@ type Report struct {
 	GuildDiscordID string
 	From, To       time.Time // inclusive dates
 	Anonymous      bool
-	// AnonymityThreshold is the guild's: a day with anonymous answers from fewer people than
-	// this is withheld. Withheld is set when every answer falls on such days, and then the
-	// report keeps only how many answered.
+	// AnonymityThreshold is the guild's current threshold, or the highest one a withheld day
+	// was judged by when that is higher (after the guild lowered it). Withheld is set when
+	// every answer falls on withheld days, and then the report keeps only how many answered.
 	AnonymityThreshold int
 	Withheld           bool
 	Responses          int
@@ -123,6 +123,9 @@ type DayStat struct {
 	// the guild's threshold.
 	Average  float64
 	Withheld bool
+	// AnonymityThreshold is the one the day was judged by: the highest of its answers' and the
+	// guild's current one (see MoodEntry.AnonymityThreshold). 0 on a day without answers.
+	AnonymityThreshold int
 	// Recipients is how many people the bot sent that day's survey to; nil when unknown.
 	Recipients *int
 }
@@ -255,8 +258,13 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		ds := DayStat{Day: d}
 		if a != nil {
 			ds.Responses = a.n
+			ds.AnonymityThreshold = max(k, a.k)
 			ds.Withheld = withheld(a)
-			if !ds.Withheld {
+			if ds.Withheld {
+				// The report names the highest threshold among its withheld days: it is the one
+				// no day reached when the whole report is withheld.
+				r.AnonymityThreshold = max(r.AnonymityThreshold, ds.AnonymityThreshold)
+			} else {
 				ds.Average = float64(a.sum) / float64(a.n)
 			}
 		}

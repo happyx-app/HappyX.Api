@@ -306,6 +306,13 @@ func TestAnonymityThresholdSetting(t *testing.T) {
 	if r, err := svc.Report(ctx, guildA, day, day); err != nil || !r.Withheld || !r.Days[0].Withheld {
 		t.Fatalf("a day answered under a threshold of 5 shows after lowering it: %+v %v", r, err)
 	}
+	// Changing an answer after lowering it keeps the higher threshold.
+	if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: user1, Mood: domain.MoodBad}); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := svc.Report(ctx, guildA, day, day); err != nil || !r.Days[0].Withheld || r.Days[0].AnonymityThreshold != 5 {
+		t.Fatalf("a changed answer takes the lower threshold: %+v %v", r, err)
+	}
 }
 
 // TestGuildIsolation checks that the same Discord user in two servers has two separate

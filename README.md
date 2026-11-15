@@ -72,8 +72,10 @@ anywhere: not in the period's `average` or `distribution` (which may then add up
 the period's figures minus the other days' would give it back, and so would two reports whose
 periods differ by that day. Only anonymous answers count towards the threshold, because named ones
 are known and would give the rest away. Each answer keeps the threshold in force when it was given,
-and a day uses the highest of those and the current one, so lowering the threshold only applies
-from then on. When every answer falls on withheld days, the report has
+and a day uses the highest of those and the current one, so lowering the threshold never shows a
+day that already has answers (changing an answer keeps the higher one). Each day in a report says
+the threshold it was judged by (`anonymity_threshold`), and the report's `anonymity_threshold` is
+the highest of its withheld days' when that is above the current one. When every answer falls on withheld days, the report has
 `withheld: true` and keeps only `responses` and `respondents`. The bot, the dashboard and the
 server export read the same rule, so all of them apply it.
 
