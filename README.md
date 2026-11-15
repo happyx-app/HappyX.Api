@@ -200,7 +200,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
-| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak` and `entries` |
+| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak`, `entries`, `anonymous` (whether today's answer is), `named_since` (once anonymity was turned off) and `anonymity_threshold` |
 | GET | `/web/me/games` | `?from=&to=` (default: last 30 days). The user's own «Who's who?» score in every server where they play: `weeks` with `correct` and `guesses` for each finished round they guessed in |
 | GET | `/web/me/vacations` | `{own, set_by_admins}`: the user's own vacation (`{from, to}`, `null` if none) and the ones admins set for them (each with `discord_guild_id` and `guild_name`), that haven't ended. See «Vacations» |
 | PUT | `/web/me/vacation` | `from`, `to` (`YYYY-MM-DD`): sets the user's own vacation, for every server, replacing the one they had. Needs `Content-Type: application/json` |

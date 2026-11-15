@@ -526,12 +526,15 @@ type evolutionDTO struct {
 	Timezone       string `json:"timezone"`
 	// Anonymous is whether today's answer is anonymous, so members can see whether the admin
 	// sees who answers. NamedSince, once anonymity was turned off, is the first day with names.
-	Anonymous  bool        `json:"anonymous"`
-	NamedSince string      `json:"named_since,omitempty"`
-	Responses  int         `json:"responses"`
-	Average    float64     `json:"average"`
-	Streak     int         `json:"streak"`
-	Entries    []myMoodDTO `json:"entries"`
+	Anonymous  bool   `json:"anonymous"`
+	NamedSince string `json:"named_since,omitempty"`
+	// AnonymityThreshold is the fewest people whose anonymous answers a day needs before admins
+	// see more than how many answered.
+	AnonymityThreshold int         `json:"anonymity_threshold"`
+	Responses          int         `json:"responses"`
+	Average            float64     `json:"average"`
+	Streak             int         `json:"streak"`
+	Entries            []myMoodDTO `json:"entries"`
 }
 
 type myMoodDTO struct {
@@ -578,7 +581,8 @@ func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Vie
 	for _, ev := range evs {
 		d := evolutionDTO{
 			DiscordGuildID: ev.Guild.DiscordID, Name: ev.Guild.Name, Timezone: ev.Guild.Settings.Timezone, Anonymous: ev.AnonymousToday,
-			Responses: ev.Responses, Average: ev.Average, Streak: ev.Streak, Entries: []myMoodDTO{},
+			AnonymityThreshold: max(ev.Guild.Settings.AnonymityThreshold, domain.MinAnonymityThreshold),
+			Responses:          ev.Responses, Average: ev.Average, Streak: ev.Streak, Entries: []myMoodDTO{},
 		}
 		if n := ev.Guild.Settings.NamedSince; !n.IsZero() {
 			d.NamedSince = n.Format(dateLayout)
