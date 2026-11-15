@@ -198,7 +198,7 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		}
 	}
 	r.Respondents = len(people)
-	r.Withheld = anonymous && r.Respondents < k
+	r.Withheld = anonymous && r.Respondents > 0 && r.Respondents < k
 	if r.Responses > 0 && !r.Withheld {
 		r.Average = float64(total) / float64(r.Responses)
 	}

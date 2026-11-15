@@ -135,6 +135,10 @@ func TestBuildReportWithheldBelowThreshold(t *testing.T) {
 		t.Fatalf("threshold 5 with three people: %+v", r)
 	}
 
+	if r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), nil, nil); r.Withheld {
+		t.Fatal("a week without answers has nothing to withhold")
+	}
+
 	// A named team sees everything, however small.
 	g.Settings.Anonymous = false
 	if r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries[:2], nil); r.Withheld || r.Average == 0 {
