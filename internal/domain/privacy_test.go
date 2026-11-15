@@ -25,15 +25,20 @@ func TestBuildGuildExport(t *testing.T) {
 	}
 
 	x := BuildGuildExport(d, day)
-	got := map[string]string{}
-	for _, e := range x.Moods {
-		got[e.Message] = e.Username
+	// Only Ana's public answer names her. The anonymous one and that of Bea, who no longer takes
+	// part, are summed up: two people that day, so neither their average nor comments show.
+	if len(x.Moods) != 1 || x.Moods[0].Username != "ana" || x.Moods[0].Message != "public" {
+		t.Fatalf("named moods: %+v", x.Moods)
 	}
-	if got["zz"] != "" || got["public"] != "ana" || got["paused"] != "" {
-		t.Fatalf("authors: %v", got)
+	if len(x.AnonymousDays) != 1 || x.AnonymousDays[0].Answers != 2 || !x.AnonymousDays[0].Withheld || x.AnonymousDays[0].Average != 0 || len(x.AnonymousComments) != 0 {
+		t.Fatalf("anonymous answers: %+v %v", x.AnonymousDays, x.AnonymousComments)
 	}
-	if x.Moods[0].Username != "" || x.Moods[2].Username != "ana" {
-		t.Fatalf("anonymous answers come first within a day, sorted by mood: %+v", x.Moods)
+	// With a third person, the day shows its average and the comments, without day or mood.
+	d.Members = append(d.Members, Member{DiscordID: "3", Username: "cris", Active: true})
+	d.Moods = append(d.Moods, MoodEntry{MemberDiscordID: "3", Day: day, Mood: 3, Anonymous: true})
+	x = BuildGuildExport(d, day)
+	if got := x.AnonymousDays[0]; got.Withheld || got.Answers != 3 || got.Average != 3 || len(x.AnonymousComments) != 2 || x.AnonymousComments[0] != "paused" {
+		t.Fatalf("anonymous answers of three people: %+v %v", x.AnonymousDays, x.AnonymousComments)
 	}
 	if r := x.Rounds[0]; len(r.Answers) != 0 || r.ProposedBy != "" {
 		t.Fatalf("answering: %+v", r)
@@ -47,9 +52,7 @@ func TestBuildGuildExport(t *testing.T) {
 
 	// Back to anonymous hides everyone.
 	d.Guild.Settings.Anonymous = true
-	for _, e := range BuildGuildExport(d, day).Moods {
-		if e.Username != "" {
-			t.Fatalf("anonymous guild names %q", e.Username)
-		}
+	if x := BuildGuildExport(d, day); len(x.Moods) != 0 || x.AnonymousDays[0].Answers != 4 {
+		t.Fatalf("anonymous guild names someone: %+v", x.Moods)
 	}
 }

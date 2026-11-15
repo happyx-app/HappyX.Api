@@ -64,12 +64,16 @@ Anonymous comments come with their text only: no day and no mood, in an order un
 they were written that stays the same between readings. In a small team, the day or the face
 would point to the author.
 
-**Anonymity threshold.** `anonymity_threshold` (default 3, from 3 to 50) is the fewest people who
-must have answered before a report shows anything but counts. When a period's anonymous answers
-come from fewer people, the report has `withheld: true`: `responses` and `respondents` stay, the
-average, the distribution, each day's average and the comments are left out. A day whose anonymous
-answers come from fewer people has `withheld: true` and no average either. The bot and the
-dashboard read the same report, so both apply it.
+**Anonymity threshold.** `anonymity_threshold` (default 3, from 3 to 50) is the fewest people
+whose anonymous answers a day needs before it shows more than counts. A day with anonymous answers
+from fewer people has `withheld: true` and keeps only `responses`. Nothing else from it counts
+anywhere: not in the period's `average` or `distribution` (which may then add up to fewer than
+`responses`), and not in the comments. Hiding only that day's own average would not be enough:
+the period's figures minus the other days' would give it back, and so would two reports whose
+periods differ by that day. Only anonymous answers count towards the threshold, because named ones
+are known and would give the rest away. When every answer falls on withheld days, the report has
+`withheld: true` and keeps only `responses` and `respondents`. The bot, the dashboard and the
+server export read the same rule, so all of them apply it.
 
 Kudos are the exception: they are public thanks posted in the server with both names, so reports
 list them with names whatever the setting.
@@ -247,8 +251,10 @@ which streaks are counted, and then deleted; erasing your data deletes them at o
 Personal data (GDPR): every logged-in user can download (`/web/me/data`) and erase
 (`DELETE /web/me/data`) their own data. A server export never tells its managers more than the
 dashboard does: a survey answer names its author only if the server is not anonymous now, the
-answer was given while it wasn't either, and the author still takes part; anonymous answers are
-sorted by content within each day. Game answers appear once guessing starts and their authors once
+answer was given while it wasn't either, and the author still takes part. The rest come summed
+up by day (`anonymous_days`: answers, and the average unless the day is withheld), with their
+comments apart in `anonymous_comments`, sorted by content, without day or mood and without those
+of withheld days. Game answers appear once guessing starts and their authors once
 the round is finished. Nightly database backups still hold erased data until they rotate.
 
 `/web` routes use the session cookie and `/v1` routes use API keys; neither works on the other.

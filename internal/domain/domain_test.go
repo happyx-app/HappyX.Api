@@ -13,6 +13,7 @@ const (
 	userA  = "200000000000000001"
 	userB  = "200000000000000002"
 	userC  = "200000000000000003"
+	userD  = "200000000000000004"
 )
 
 func day(s string) time.Time {
@@ -72,7 +73,9 @@ func TestBuildReport(t *testing.T) {
 	if r.Responses != 4 || r.Respondents != 3 || r.Withheld || r.AnonymityThreshold != 3 {
 		t.Fatalf("responses/respondents/withheld = %d/%d/%v, want 4/3/false", r.Responses, r.Respondents, r.Withheld)
 	}
-	if want := (5.0 + 2 + 4 + 3) / 4; r.Average != want {
+	// Wednesday's single answer counts nowhere but in the totals: the average minus Monday's
+	// would be that person's mood.
+	if want := (5.0 + 2 + 4) / 3; r.Average != want {
 		t.Fatalf("average = %v, want %v", r.Average, want)
 	}
 	if len(r.Days) != 5 {
@@ -85,7 +88,7 @@ func TestBuildReport(t *testing.T) {
 	if d := r.Days[2]; d.Responses != 1 || !d.Withheld || d.Average != 0 {
 		t.Fatalf("a day with one anonymous answer keeps its average: %+v", d)
 	}
-	if r.Distribution[MoodGreat] != 1 || r.Distribution[MoodAwful] != 0 {
+	if r.Distribution[MoodGreat] != 1 || r.Distribution[MoodAwful] != 0 || r.Distribution[MoodNeutral] != 0 {
 		t.Fatalf("unexpected distribution: %v", r.Distribution)
 	}
 	if len(r.Messages) != 1 || r.Messages[0].MemberDiscordID != "" || r.Messages[0].Username != "" {
@@ -102,6 +105,56 @@ func TestBuildReport(t *testing.T) {
 	}
 	if d := r.Days[2]; d.Withheld || d.Average != 3 {
 		t.Fatalf("a named day hides its average: %+v", d)
+	}
+	if r.Average != 14.0/4 || r.Distribution[MoodNeutral] != 1 {
+		t.Fatalf("a named report leaves a day out: %+v", r)
+	}
+}
+
+// A withheld day's comments are left out too: otherwise two reports whose periods differ by
+// that day would tell which comment was written on it.
+func TestBuildReportLeavesWithheldDaysOut(t *testing.T) {
+	entries := []MoodEntry{
+		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodGood, Message: "monday"},
+		{MemberDiscordID: userB, Day: day("2026-10-19"), Mood: MoodGood},
+		{MemberDiscordID: userC, Day: day("2026-10-19"), Mood: MoodGood},
+		{MemberDiscordID: userA, Day: day("2026-10-20"), Mood: MoodAwful, Message: "tuesday"},
+	}
+	g := Guild{DiscordID: guildA, Settings: DefaultGuildSettings()}
+	week := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, nil)
+	monday := BuildReport(g, day("2026-10-19"), day("2026-10-19"), entries[:3], nil)
+	if week.Average != monday.Average || week.Distribution[MoodAwful] != 0 {
+		t.Fatalf("Tuesday's lone answer shows in the week: %+v", week)
+	}
+	if len(week.Messages) != 1 || week.Messages[0].Message != "monday" {
+		t.Fatalf("Tuesday's lone comment shows in the week: %+v", week.Messages)
+	}
+	if week.Withheld || week.Responses != 4 || week.Days[1].Responses != 1 || !week.Days[1].Withheld {
+		t.Fatalf("the week should keep its counts: %+v", week)
+	}
+
+	// Only the anonymous answers count towards the threshold: the named ones are known, so they
+	// would give the anonymous one away.
+	g.Settings.Anonymous = false
+	mixed := []MoodEntry{
+		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodGood},
+		{MemberDiscordID: userB, Day: day("2026-10-19"), Mood: MoodGood},
+		{MemberDiscordID: userC, Day: day("2026-10-19"), Mood: MoodGood},
+		{MemberDiscordID: userD, Day: day("2026-10-19"), Mood: MoodAwful, Anonymous: true},
+	}
+	if r := BuildReport(g, day("2026-10-19"), day("2026-10-19"), mixed, nil); !r.Days[0].Withheld || r.Distribution[MoodAwful] != 0 {
+		t.Fatalf("one anonymous answer among named ones shows: %+v", r)
+	}
+	g.Settings.Anonymous = true
+
+	// Three people, never three on the same day: nothing can be shown.
+	spread := []MoodEntry{
+		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodGood, Message: "a"},
+		{MemberDiscordID: userB, Day: day("2026-10-20"), Mood: MoodBad},
+		{MemberDiscordID: userC, Day: day("2026-10-21"), Mood: MoodGreat},
+	}
+	if r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), spread, nil); !r.Withheld || r.Respondents != 3 || r.Average != 0 || len(r.Messages) != 0 {
+		t.Fatalf("answers spread over days show: %+v", r)
 	}
 }
 
@@ -235,6 +288,7 @@ func TestBuildReportKeepsEarlierAnswersAnonymous(t *testing.T) {
 	entries := []MoodEntry{
 		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodGreat, Message: "said in private", Anonymous: true},
 		{MemberDiscordID: userC, Day: day("2026-10-19"), Mood: MoodGood, Anonymous: true},
+		{MemberDiscordID: userD, Day: day("2026-10-19"), Mood: MoodGood, Anonymous: true},
 		{MemberDiscordID: userB, Day: day("2026-10-20"), Mood: MoodBad, Message: "said in public"},
 	}
 	usernames := map[string]string{userA: "ana", userB: "bob", userC: "cris"}
@@ -242,18 +296,20 @@ func TestBuildReportKeepsEarlierAnswersAnonymous(t *testing.T) {
 	g.Settings.Anonymous = false
 
 	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
-	if len(r.Messages) != 2 {
-		t.Fatalf("messages: %+v", r.Messages)
-	}
 	if m := r.Messages[0]; m.Username != "bob" || m.MemberDiscordID != userB {
 		t.Fatalf("answer given in public lost its author: %+v", m)
+	}
+	if len(r.Messages) != 2 {
+		t.Fatalf("messages: %+v", r.Messages)
 	}
 	if m := r.Messages[1]; m.MemberDiscordID != "" || m.Username != "" || !m.Day.IsZero() {
 		t.Fatalf("answer given while anonymous shows its author or day: %+v", m)
 	}
-	// Only two people answered while anonymous: the earlier day keeps its average hidden.
-	if d := r.Days[0]; !d.Withheld {
-		t.Fatalf("anonymous answers of two people show their average: %+v", d)
+
+	// With only two people answering while anonymous, that day is left out, comment included.
+	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), slices.Delete(slices.Clone(entries), 2, 3), usernames)
+	if d := r.Days[0]; !d.Withheld || len(r.Messages) != 1 {
+		t.Fatalf("anonymous answers of two people show: %+v", r)
 	}
 
 	g.Settings.Anonymous = true

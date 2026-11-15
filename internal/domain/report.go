@@ -13,17 +13,20 @@ type Report struct {
 	GuildDiscordID string
 	From, To       time.Time // inclusive dates
 	Anonymous      bool
-	// AnonymityThreshold is the guild's: with anonymous answers from fewer people than this,
-	// Withheld is set and the report keeps only how many answered.
+	// AnonymityThreshold is the guild's: a day with anonymous answers from fewer people than
+	// this is withheld. Withheld is set when every answer falls on such days, and then the
+	// report keeps only how many answered.
 	AnonymityThreshold int
 	Withheld           bool
 	Responses          int
 	Respondents        int
-	Average            float64      // 0 when there are no responses or Withheld
-	Distribution       map[Mood]int // count per mood
-	Days               []DayStat
-	Messages           []ReportMessage
-	Kudos              KudosSummary
+	// Average, Distribution and Messages leave out the withheld days (see BuildReport), so
+	// Average is 0 when Withheld, and Distribution may add up to fewer than Responses.
+	Average      float64
+	Distribution map[Mood]int // count per mood
+	Days         []DayStat
+	Messages     []ReportMessage
+	Kudos        KudosSummary
 	// Participation compares answers with surveys sent, on the days the bot reported how many
 	// people it sent the survey to. Nil when it reported none in the period.
 	Participation *Participation
@@ -139,12 +142,22 @@ type ReportMessage struct {
 // Anonymous reports whether the comment hides its author.
 func (m ReportMessage) Anonymous() bool { return m.MemberDiscordID == "" }
 
+// WithheldDay reports whether a day with anonymous answers from this many people shows only
+// how many answered: when they are fewer than the threshold k, anything more could point to
+// them. Only the anonymous answers count, since the named ones are known anyway.
+func WithheldDay(anonymousPeople, k int) bool {
+	return anonymousPeople > 0 && anonymousPeople < max(k, MinAnonymityThreshold)
+}
+
 // BuildReport aggregates entries into a report, hiding identities when anonymous. An entry
 // only shows its author when the guild is not anonymous now and was not when it was written.
-// When any answer is anonymous and fewer people than the guild's threshold answered, the
-// report is withheld: it keeps the counts and drops the average, the moods and the comments.
-// A day with anonymous answers from fewer people than the threshold drops its average too.
-// usernames maps member Discord IDs to display names.
+//
+// A day with anonymous answers from fewer people than the guild's threshold is withheld: it
+// keeps how many answered, and nothing else from it counts anywhere, not in the period's
+// average, distribution or comments. Leaving it out only of its own row would not be enough:
+// the period's figures minus the other days' would give it back, and so would two reports
+// whose periods differ by that day. When every answer falls on withheld days, the report is
+// withheld too and keeps only the counts. usernames maps member Discord IDs to display names.
 func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames map[string]string) Report {
 	k := max(guild.Settings.AnonymityThreshold, MinAnonymityThreshold)
 	r := Report{
@@ -160,62 +173,76 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 	}
 
 	type acc struct {
-		n, sum    int
-		people    map[string]struct{}
-		anonymous bool
+		n, sum int
+		// anonymous are who answered without their name showing.
+		anonymous    map[string]struct{}
+		distribution map[Mood]int
+		named        []ReportMessage
+		unnamed      []ReportMessage
 	}
 	perDay := map[time.Time]*acc{}
 	people := map[string]struct{}{}
-	anonymous := guild.Settings.Anonymous
-	total := 0
-	var named, unnamed []ReportMessage
 	for _, e := range entries {
 		r.Responses++
-		total += int(e.Mood)
-		r.Distribution[e.Mood]++
 		people[e.MemberDiscordID] = struct{}{}
 		d := TruncateDay(e.Day)
 		a := perDay[d]
 		if a == nil {
-			a = &acc{people: map[string]struct{}{}}
+			a = &acc{anonymous: map[string]struct{}{}, distribution: map[Mood]int{}}
 			perDay[d] = a
 		}
 		a.n++
 		a.sum += int(e.Mood)
-		a.people[e.MemberDiscordID] = struct{}{}
+		a.distribution[e.Mood]++
 		shown := !guild.Settings.Anonymous && !e.Anonymous
 		if !shown {
-			anonymous = true
-			a.anonymous = true
+			a.anonymous[e.MemberDiscordID] = struct{}{}
 		}
 		switch {
 		case e.Message == "":
 		case shown:
-			named = append(named, ReportMessage{Day: d, Mood: e.Mood, Message: e.Message,
+			a.named = append(a.named, ReportMessage{Day: d, Mood: e.Mood, Message: e.Message,
 				MemberDiscordID: e.MemberDiscordID, Username: usernames[e.MemberDiscordID]})
 		default:
-			unnamed = append(unnamed, ReportMessage{Message: e.Message})
+			a.unnamed = append(a.unnamed, ReportMessage{Message: e.Message})
 		}
 	}
 	r.Respondents = len(people)
-	r.Withheld = anonymous && r.Respondents > 0 && r.Respondents < k
-	if r.Responses > 0 && !r.Withheld {
-		r.Average = float64(total) / float64(r.Responses)
+
+	withheld := func(a *acc) bool { return WithheldDay(len(a.anonymous), k) }
+	// Days in order, so named comments keep the order they were written in.
+	days := make([]time.Time, 0, len(perDay))
+	for d := range perDay {
+		days = append(days, d)
 	}
-	if r.Withheld {
-		for m := range r.Distribution {
-			r.Distribution[m] = 0
+	slices.SortFunc(days, func(a, b time.Time) int { return a.Compare(b) })
+	shown, total := 0, 0
+	var named, unnamed []ReportMessage
+	for _, d := range days {
+		a := perDay[d]
+		if withheld(a) {
+			continue
 		}
-	} else {
-		// Anonymous comments come in an order that has nothing to do with when they were
-		// written, yet stays the same each time the report is opened.
-		key := func(m ReportMessage) []byte {
-			h := sha256.Sum256([]byte(guild.DiscordID + "|" + from.Format("2006-01-02") + "|" + m.Message))
-			return h[:]
+		shown += a.n
+		total += a.sum
+		for m, n := range a.distribution {
+			r.Distribution[m] += n
 		}
-		slices.SortStableFunc(unnamed, func(a, b ReportMessage) int { return slices.Compare(key(a), key(b)) })
-		r.Messages = append(named, unnamed...)
+		named = append(named, a.named...)
+		unnamed = append(unnamed, a.unnamed...)
 	}
+	r.Withheld = r.Responses > 0 && shown == 0
+	if shown > 0 {
+		r.Average = float64(total) / float64(shown)
+	}
+	// Anonymous comments come in an order that has nothing to do with when they were written,
+	// yet stays the same each time the report is opened.
+	key := func(m ReportMessage) []byte {
+		h := sha256.Sum256([]byte(guild.DiscordID + "|" + from.Format("2006-01-02") + "|" + m.Message))
+		return h[:]
+	}
+	slices.SortStableFunc(unnamed, func(a, b ReportMessage) int { return slices.Compare(key(a), key(b)) })
+	r.Messages = append(named, unnamed...)
 	// Non-working days only show up when someone answered anyway.
 	for d := TruncateDay(from); !d.After(TruncateDay(to)); d = d.AddDate(0, 0, 1) {
 		a := perDay[d]
@@ -225,7 +252,7 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		ds := DayStat{Day: d}
 		if a != nil {
 			ds.Responses = a.n
-			ds.Withheld = r.Withheld || (a.anonymous && len(a.people) < k)
+			ds.Withheld = withheld(a)
 			if !ds.Withheld {
 				ds.Average = float64(a.sum) / float64(a.n)
 			}

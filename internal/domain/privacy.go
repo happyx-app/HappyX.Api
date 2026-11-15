@@ -68,20 +68,33 @@ type GuildData struct {
 type GuildExport struct {
 	Guild   Guild
 	Members []Member
-	Moods   []ExportedMood
-	Kudos   []Kudos
-	Rounds  []ExportedRound
+	// Moods are the answers that show their author, one by one.
+	Moods []ExportedMood
+	// AnonymousDays sum up the anonymous answers by day, as the dashboard shows them: how many,
+	// and their average unless the day is withheld. AnonymousComments are their comments with
+	// neither day nor mood, the withheld days' left out (see BuildReport).
+	AnonymousDays     []ExportedDay
+	AnonymousComments []string
+	Kudos             []Kudos
+	Rounds            []ExportedRound
 	// CanvasStrokes are the team canvas' strokes with their authors, as moderators see them.
 	CanvasStrokes []CanvasStroke
 }
 
-// ExportedMood is a survey answer in a guild export. Username is empty when the answer is
-// anonymous.
+// ExportedMood is a survey answer that names its author in a guild export.
 type ExportedMood struct {
 	Day      time.Time
 	Mood     Mood
 	Message  string
 	Username string
+}
+
+// ExportedDay is a day's anonymous answers in a guild export. Average is 0 when Withheld.
+type ExportedDay struct {
+	Day      time.Time
+	Answers  int
+	Average  float64
+	Withheld bool
 }
 
 // ExportedRound is a «Who's who?» round in a guild export, with what the game has revealed so far.
@@ -101,13 +114,15 @@ type ExportedAnswer struct {
 
 // BuildGuildExport applies the dashboard's rules to the guild's data:
 //   - a survey answer names its author only if the guild is not anonymous now, the answer was
-//     given while it wasn't either, and the author still takes part (like reports);
+//     given while it wasn't either, and the author still takes part (like reports). The rest
+//     are summed up by day, and their comments go apart without day or mood, with the same
+//     threshold as the dashboard;
 //   - «Who's who?» answers appear once guessing starts, and their authors (and who proposed the
 //     question) once the round is finished, like on the game page.
 //
 // today is the current date in the guild's timezone.
 func BuildGuildExport(d GuildData, today time.Time) GuildExport {
-	out := GuildExport{Guild: d.Guild, Members: d.Members, Kudos: d.Kudos, Moods: []ExportedMood{}, Rounds: []ExportedRound{}, CanvasStrokes: d.CanvasStrokes}
+	out := GuildExport{Guild: d.Guild, Members: d.Members, Kudos: d.Kudos, Moods: []ExportedMood{}, AnonymousDays: []ExportedDay{}, AnonymousComments: []string{}, Rounds: []ExportedRound{}, CanvasStrokes: d.CanvasStrokes}
 
 	named := map[string]string{}
 	if !d.Guild.Settings.Anonymous {
@@ -117,28 +132,47 @@ func BuildGuildExport(d GuildData, today time.Time) GuildExport {
 			}
 		}
 	}
-	for _, e := range d.Moods {
-		em := ExportedMood{Day: e.Day, Mood: e.Mood, Message: e.Message}
-		if !e.Anonymous {
-			em.Username = named[e.MemberDiscordID]
-		}
-		out.Moods = append(out.Moods, em)
+	type day struct {
+		answers, sum int
+		people       map[string]struct{}
+		comments     []string
 	}
-	// Within a day, anonymous answers are sorted by what they say, so their order can't be
-	// matched with the order members joined or answered in.
+	days := map[time.Time]*day{}
+	for _, e := range d.Moods {
+		if name := named[e.MemberDiscordID]; name != "" && !e.Anonymous {
+			out.Moods = append(out.Moods, ExportedMood{Day: e.Day, Mood: e.Mood, Message: e.Message, Username: name})
+			continue
+		}
+		dd := days[TruncateDay(e.Day)]
+		if dd == nil {
+			dd = &day{people: map[string]struct{}{}}
+			days[TruncateDay(e.Day)] = dd
+		}
+		dd.answers++
+		dd.sum += int(e.Mood)
+		dd.people[e.MemberDiscordID] = struct{}{}
+		if e.Message != "" {
+			dd.comments = append(dd.comments, e.Message)
+		}
+	}
 	sort.SliceStable(out.Moods, func(i, j int) bool {
 		a, b := out.Moods[i], out.Moods[j]
 		if !a.Day.Equal(b.Day) {
 			return a.Day.Before(b.Day)
 		}
-		if a.Username != b.Username {
-			return a.Username < b.Username
-		}
-		if a.Mood != b.Mood {
-			return a.Mood < b.Mood
-		}
-		return a.Message < b.Message
+		return a.Username < b.Username
 	})
+	for dt, dd := range days {
+		x := ExportedDay{Day: dt, Answers: dd.answers, Withheld: WithheldDay(len(dd.people), d.Guild.Settings.AnonymityThreshold)}
+		if !x.Withheld {
+			x.Average = float64(dd.sum) / float64(dd.answers)
+			out.AnonymousComments = append(out.AnonymousComments, dd.comments...)
+		}
+		out.AnonymousDays = append(out.AnonymousDays, x)
+	}
+	sort.Slice(out.AnonymousDays, func(i, j int) bool { return out.AnonymousDays[i].Day.Before(out.AnonymousDays[j].Day) })
+	// Sorted by what they say, so their order tells nothing about when they were written.
+	sort.Strings(out.AnonymousComments)
 
 	byWeek := map[time.Time][]RoundAnswer{}
 	for _, a := range d.Answers {
