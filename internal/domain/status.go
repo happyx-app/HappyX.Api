@@ -2,11 +2,13 @@ package domain
 
 import "time"
 
-// DispatchStat is one finished dispatch: how many people it went to and how many DMs failed.
+// DispatchStat is one finished dispatch: how many people it went to, how many DMs failed and, of
+// those, how many because the person has DMs closed.
 type DispatchStat struct {
 	Day        time.Time
 	Recipients int
 	Failed     int
+	ClosedDMs  int
 }
 
 // GuildHealth is what the dashboard needs to tell an admin whether HappyX is reaching their

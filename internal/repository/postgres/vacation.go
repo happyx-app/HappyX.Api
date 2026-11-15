@@ -78,6 +78,36 @@ func (r *VacationRepo) Delete(ctx context.Context, userID, guildID string) error
 	return nil
 }
 
+func (r *VacationRepo) EndCovering(ctx context.Context, userID, guildID string, day time.Time) ([]domain.Vacation, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
+	rows, err := tx.Query(ctx, `SELECT `+vacationCols+vacationFrom+`
+		WHERE v.user_discord_id = $1
+		AND (v.guild_id IS NULL OR v.guild_id = (SELECT id FROM guilds WHERE discord_id = $2))
+		AND v.starts_on <= $3 AND v.ends_on >= $3
+		ORDER BY v.guild_id NULLS FIRST
+		FOR UPDATE OF v`, userID, guildID, day)
+	ended, err := collect(rows, err, func(row pgx.Row) (domain.Vacation, error) { return scanVacation(row) })
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range ended {
+		// The days already gone stay vacation, so they keep not counting against anyone.
+		if v.From.Equal(domain.TruncateDay(day)) {
+			_, err = tx.Exec(ctx, `DELETE FROM vacations WHERE id = $1`, v.ID)
+		} else {
+			_, err = tx.Exec(ctx, `UPDATE vacations SET ends_on = $2 WHERE id = $1`, v.ID, day.AddDate(0, 0, -1))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ended, tx.Commit(ctx)
+}
+
 func (r *VacationRepo) ForUser(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error) {
 	rows, err := r.db.Query(ctx, `SELECT `+vacationCols+vacationFrom+`
 		WHERE v.user_discord_id = $1 AND v.ends_on >= $2

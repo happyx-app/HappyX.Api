@@ -318,9 +318,18 @@ const (
 // ListMembers returns the members who haven't opted out, narrowed to the survey's or the game's
 // roles when that is what the list is for.
 func (s *Service) ListMembers(ctx context.Context, guildID string, purpose MembersFor) ([]domain.Member, error) {
+	return s.ListMembersOn(ctx, guildID, purpose, time.Time{})
+}
+
+// ListMembersOn is ListMembers with the vacations of day instead of today's: who got that day's
+// survey, as far as vacations go. A zero day is today.
+func (s *Service) ListMembersOn(ctx context.Context, guildID string, purpose MembersFor, day time.Time) ([]domain.Member, error) {
 	g, err := s.activeGuild(ctx, guildID)
 	if err != nil {
 		return nil, err
+	}
+	if day.IsZero() {
+		day = s.today(g)
 	}
 	ms, err := s.members.ListActive(ctx, guildID)
 	if err != nil || purpose == MembersAll {
@@ -331,7 +340,7 @@ func (s *Service) ListMembers(ctx context.Context, guildID string, purpose Membe
 		f = g.Settings.GameRoles
 	}
 	// Nobody gets a DM on their vacation.
-	away, err := s.onVacation(ctx, guildID, s.today(g))
+	away, err := s.onVacation(ctx, guildID, domain.TruncateDay(day))
 	if err != nil {
 		return nil, err
 	}
@@ -524,16 +533,17 @@ func (s *Service) ReleaseDispatch(ctx context.Context, guildID string, kind doma
 	return s.dispatches.Release(ctx, guildID, kind, domain.TruncateDay(period))
 }
 
-// FinishDispatch records, after a claimed send, how many people it went to and how many of
-// the DMs failed. Only counts are kept; they feed the owner's admin dashboard.
-func (s *Service) FinishDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed int) error {
+// FinishDispatch records, after a claimed send, how many people it went to, how many of the DMs
+// failed and, of those, how many because the person has DMs closed. Only counts are kept; they
+// feed the owner's admin dashboard and the server's status.
+func (s *Service) FinishDispatch(ctx context.Context, guildID string, kind domain.DispatchKind, period time.Time, recipients, failed, closed int) error {
 	if !kind.Valid() {
 		return domain.ValidationError{Reason: "kind must be \"survey\", \"report\", \"game\", \"game_guess\" or \"team_summary\""}
 	}
-	if recipients < 0 || failed < 0 || failed > recipients {
-		return domain.ValidationError{Reason: "recipients and failed must be 0 or more, and failed at most recipients"}
+	if recipients < 0 || failed < 0 || failed > recipients || closed < 0 || closed > failed {
+		return domain.ValidationError{Reason: "recipients, failed and closed_dms must be 0 or more, failed at most recipients and closed_dms at most failed"}
 	}
-	return s.dispatches.Finish(ctx, guildID, kind, domain.TruncateDay(period), recipients, failed)
+	return s.dispatches.Finish(ctx, guildID, kind, domain.TruncateDay(period), recipients, failed, closed)
 }
 
 // --- Reports ---

@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/happyx-app/HappyX.Api/internal/domain"
@@ -121,21 +120,19 @@ func (s *Service) SetMemberOwnVacation(ctx context.Context, guildID, userID stri
 	return s.setOwnVacation(ctx, userID, from, to, s.today(g))
 }
 
-// EndMemberVacations removes the member's own vacation and the one set for them in the guild, so
-// the survey comes back from the next one. Having none is fine.
-func (s *Service) EndMemberVacations(ctx context.Context, guildID, userID string) error {
-	if _, err := s.activeGuild(ctx, guildID); err != nil {
-		return err
+// EndMemberVacations is /happyx resume: the member is back, so the vacations that cover today in
+// the guild, their own and the one set for them there, end yesterday and today's survey reaches
+// them. The days already gone stay vacation. Vacations planned for later stay too. It returns
+// the ones it ended, as they were; having none is fine.
+func (s *Service) EndMemberVacations(ctx context.Context, guildID, userID string) ([]domain.Vacation, error) {
+	g, err := s.activeGuild(ctx, guildID)
+	if err != nil {
+		return nil, err
 	}
 	if s.vacations == nil {
-		return nil
+		return nil, nil
 	}
-	for _, scope := range []string{"", guildID} {
-		if err := s.vacations.Delete(ctx, userID, scope); err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return err
-		}
-	}
-	return nil
+	return s.vacations.EndCovering(ctx, userID, guildID, s.today(g))
 }
 
 // VacationNotices returns the vacations admins set that the bot has yet to tell the person about.

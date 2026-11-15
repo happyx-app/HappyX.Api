@@ -318,21 +318,31 @@ func (s *Server) webHealth(w http.ResponseWriter, r *http.Request, v domain.View
 		s.fail(w, r, err)
 		return
 	}
-	type lastDTO struct {
-		Day        string `json:"day"`
-		Recipients int    `json:"recipients"`
-		Failed     int    `json:"failed"`
-	}
-	out := struct {
-		Audience   int      `json:"audience"`
-		OptedOut   int      `json:"opted_out"`
-		OnVacation int      `json:"on_vacation"`
-		LastSurvey *lastDTO `json:"last_survey"`
-	}{Audience: h.Audience, OptedOut: h.OptedOut, OnVacation: h.OnVacation}
+	writeJSON(w, http.StatusOK, toHealthDTO(h))
+}
+
+// healthDTO is who the survey reaches now and how the last one went, for the dashboard and the
+// bot's /happyx status.
+type healthDTO struct {
+	Audience   int            `json:"audience"`
+	OptedOut   int            `json:"opted_out"`
+	OnVacation int            `json:"on_vacation"`
+	LastSurvey *lastSurveyDTO `json:"last_survey"`
+}
+
+type lastSurveyDTO struct {
+	Day        string `json:"day"`
+	Recipients int    `json:"recipients"`
+	Failed     int    `json:"failed"`
+	ClosedDMs  int    `json:"closed_dms"`
+}
+
+func toHealthDTO(h domain.GuildHealth) healthDTO {
+	out := healthDTO{Audience: h.Audience, OptedOut: h.OptedOut, OnVacation: h.OnVacation}
 	if l := h.LastSurvey; l != nil {
-		out.LastSurvey = &lastDTO{Day: l.Day.Format(dateLayout), Recipients: l.Recipients, Failed: l.Failed}
+		out.LastSurvey = &lastSurveyDTO{Day: l.Day.Format(dateLayout), Recipients: l.Recipients, Failed: l.Failed, ClosedDMs: l.ClosedDMs}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out
 }
 
 // webUpdateSettings changes a server's settings from the dashboard: the same options as the

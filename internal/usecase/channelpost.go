@@ -78,11 +78,33 @@ func (s *Service) MemberMoods(ctx context.Context, guildID, userID string, from,
 	return out, nil
 }
 
+// UserGuild is a server the user is in, and whether they paused the survey there.
+type UserGuild struct {
+	Guild  domain.Guild
+	Paused bool
+}
+
 // UserGuilds returns the active guilds where the user is in the Discord server, whether or not
 // they get the survey there: what /happyx in a DM with the bot can be about.
-func (s *Service) UserGuilds(ctx context.Context, userID string) ([]domain.Guild, error) {
+func (s *Service) UserGuilds(ctx context.Context, userID string) ([]UserGuild, error) {
 	if err := domain.ValidateDiscordID("discord_user_id", userID); err != nil {
 		return nil, err
 	}
-	return s.guilds.ListInServer(ctx, userID)
+	in, err := s.guilds.ListInServer(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	joined, err := s.guilds.ListJoined(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	taking := make(map[string]bool, len(joined))
+	for _, g := range joined {
+		taking[g.DiscordID] = true
+	}
+	out := make([]UserGuild, len(in))
+	for n, g := range in {
+		out[n] = UserGuild{Guild: g, Paused: !taking[g.DiscordID]}
+	}
+	return out, nil
 }

@@ -550,7 +550,7 @@ func TestReleasedDispatchRetries(t *testing.T) {
 		if claim() {
 			t.Fatalf("try %d: a held claim can't be taken again", i)
 		}
-		if err := svc.FinishDispatch(ctx, guildA, domain.DispatchSurvey, day, 2, 2); err != nil {
+		if err := svc.FinishDispatch(ctx, guildA, domain.DispatchSurvey, day, 2, 2, 1); err != nil {
 			t.Fatal(err)
 		}
 		if err := release(); err != nil {

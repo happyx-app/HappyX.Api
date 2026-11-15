@@ -323,7 +323,16 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, `for must be "survey" or "game"`)
 		return
 	}
-	ms, err := s.svc.ListMembers(r.Context(), r.PathValue("guildID"), purpose)
+	// ?day=YYYY-MM-DD leaves out who was on vacation that day instead of today.
+	var day time.Time
+	if d := r.URL.Query().Get("day"); d != "" {
+		var err error
+		if day, err = time.Parse(dateLayout, d); err != nil || purpose == usecase.MembersAll {
+			writeError(w, http.StatusBadRequest, `day must be YYYY-MM-DD, with for=survey or for=game`)
+			return
+		}
+	}
+	ms, err := s.svc.ListMembersOn(r.Context(), r.PathValue("guildID"), purpose, day)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -638,11 +647,28 @@ func (s *Server) getDispatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"kind": r.PathValue("kind"), "period": r.PathValue("period")})
 }
 
-// finishDispatch records how many people a claimed send went to and how many DMs failed.
+// health is who the survey reaches now and how the last one went, for /happyx status.
+func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	g, err := s.svc.GetGuild(r.Context(), r.PathValue("guildID"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	h, err := s.svc.GuildHealth(r.Context(), g)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toHealthDTO(h))
+}
+
+// finishDispatch records how many people a claimed send went to, how many DMs failed and, of
+// those, how many because the person has DMs closed.
 func (s *Server) finishDispatch(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Recipients *int `json:"recipients"`
 		Failed     int  `json:"failed"`
+		ClosedDMs  int  `json:"closed_dms"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -656,7 +682,7 @@ func (s *Server) finishDispatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "period must be YYYY-MM-DD")
 		return
 	}
-	if err := s.svc.FinishDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period, *in.Recipients, in.Failed); err != nil {
+	if err := s.svc.FinishDispatch(r.Context(), r.PathValue("guildID"), domain.DispatchKind(r.PathValue("kind")), period, *in.Recipients, in.Failed, in.ClosedDMs); err != nil {
 		s.fail(w, r, err)
 		return
 	}

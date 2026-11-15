@@ -82,9 +82,13 @@ func (s *Server) userGuilds(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	out := make([]guildDTO, 0, len(gs))
+	type userGuildDTO struct {
+		guildDTO
+		Paused bool `json:"paused"`
+	}
+	out := make([]userGuildDTO, 0, len(gs))
 	for _, g := range gs {
-		out = append(out, toGuildDTO(g))
+		out = append(out, userGuildDTO{toGuildDTO(g.Guild), g.Paused})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

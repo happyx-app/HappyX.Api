@@ -84,13 +84,15 @@ func (s *Server) setMemberVacation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toVacationDTO(v))
 }
 
-// endMemberVacations removes the member's own vacation and the one set for them in the server.
+// endMemberVacations ends the member's vacations that cover today in the server, and lists them
+// as they were.
 func (s *Server) endMemberVacations(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.EndMemberVacations(r.Context(), r.PathValue("guildID"), r.PathValue("userID")); err != nil {
+	vs, err := s.svc.EndMemberVacations(r.Context(), r.PathValue("guildID"), r.PathValue("userID"))
+	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, toVacationDTOs(vs))
 }
 
 // vacationNotices lists the vacations admins set that the bot has to tell the person about by DM.

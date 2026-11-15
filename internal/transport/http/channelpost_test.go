@@ -72,11 +72,11 @@ func TestMemberMoodsAndGuilds(t *testing.T) {
 		t.Fatalf("not a member: %d", code)
 	}
 
-	if code, gs := doList(t, srv, "GET", "/v1/users/"+memberID+"/guilds", ""); code != 200 || len(gs) != 2 || gs[0]["discord_guild_id"] != guildA {
+	if code, gs := doList(t, srv, "GET", "/v1/users/"+memberID+"/guilds", ""); code != 200 || len(gs) != 2 || gs[0]["discord_guild_id"] != guildA || gs[0]["paused"] != false {
 		t.Fatalf("user guilds: %d %v", code, gs)
 	}
 	do(t, srv, "DELETE", "/v1/guilds/"+guildB+"/members/"+memberID, key, "") // paused: still in the server
-	if code, gs := doList(t, srv, "GET", "/v1/users/"+memberID+"/guilds", ""); code != 200 || len(gs) != 2 {
+	if code, gs := doList(t, srv, "GET", "/v1/users/"+memberID+"/guilds", ""); code != 200 || len(gs) != 2 || gs[0]["paused"] != false || gs[1]["paused"] != true {
 		t.Fatalf("after pausing one: %d %v", code, gs)
 	}
 	do(t, srv, "DELETE", "/v1/guilds/"+guildB+"/members/"+memberID+"?left=true", key, "")
