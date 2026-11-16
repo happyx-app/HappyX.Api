@@ -94,8 +94,8 @@ func TestBuildReport(t *testing.T) {
 	if len(r.Messages) != 1 || r.Messages[0].MemberDiscordID != "" || r.Messages[0].Username != "" {
 		t.Fatalf("anonymous report leaked identity: %+v", r.Messages)
 	}
-	if m := r.Messages[0]; !m.Day.IsZero() || m.Mood != 0 || !m.Anonymous() {
-		t.Fatalf("an anonymous comment keeps its day or mood: %+v", m)
+	if m := r.Messages[0]; m.Day.IsZero() || m.Mood == 0 || !m.Anonymous() {
+		t.Fatalf("an anonymous comment shows its day and mood, not its author: %+v", m)
 	}
 
 	g.Settings.Anonymous = false
@@ -342,14 +342,14 @@ func TestBuildReportKeepsEarlierAnswersAnonymous(t *testing.T) {
 	g.Settings.Anonymous = false
 
 	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
-	if m := r.Messages[0]; m.Username != "bob" || m.MemberDiscordID != userB {
-		t.Fatalf("answer given in public lost its author: %+v", m)
-	}
 	if len(r.Messages) != 2 {
 		t.Fatalf("messages: %+v", r.Messages)
 	}
-	if m := r.Messages[1]; m.MemberDiscordID != "" || m.Username != "" || !m.Day.IsZero() {
-		t.Fatalf("answer given while anonymous shows its author or day: %+v", m)
+	if m := r.Messages[1]; m.Username != "bob" || m.MemberDiscordID != userB {
+		t.Fatalf("answer given in public lost its author: %+v", m)
+	}
+	if m := r.Messages[0]; m.MemberDiscordID != "" || m.Username != "" || m.Day != day("2026-10-19") {
+		t.Fatalf("answer given while anonymous shows its author or lost its day: %+v", m)
 	}
 
 	// With only two people answering while anonymous, that day is left out, comment included.

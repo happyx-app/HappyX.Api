@@ -60,9 +60,8 @@ names answers from the next day on (`named_since` on the guild), so nobody answe
 they are anonymous; earlier answers stay anonymous for good, also when they are changed later.
 Turning anonymity back on hides every author again.
 
-Anonymous comments come with their text only: no day and no mood, in an order unrelated to when
-they were written that stays the same between readings. In a small team, the day or the face
-would point to the author.
+Anonymous comments come with their day and mood but no author, in the order they were written.
+Comments from days below the anonymity threshold are left out, like those days' moods.
 
 **Anonymity threshold.** `anonymity_threshold` (default 3, from 1 to 50) is the fewest people
 whose anonymous answers a day needs before it shows more than counts. Below 3 an answer can point

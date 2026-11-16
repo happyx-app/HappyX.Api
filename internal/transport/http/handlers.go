@@ -576,11 +576,7 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average, Withheld: d.Withheld, AnonymityThreshold: d.AnonymityThreshold, Recipients: d.Recipients})
 	}
 	for _, m := range rep.Messages {
-		msg := reportMsgDTO{Message: m.Message, DiscordID: m.MemberDiscordID, Username: m.Username}
-		if !m.Anonymous() {
-			msg.Day, msg.Mood = m.Day.Format(dateLayout), int(m.Mood)
-		}
-		out.Messages = append(out.Messages, msg)
+		out.Messages = append(out.Messages, reportMsgDTO{Message: m.Message, Day: m.Day.Format(dateLayout), Mood: int(m.Mood), DiscordID: m.MemberDiscordID, Username: m.Username})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
