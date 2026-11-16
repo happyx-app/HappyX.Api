@@ -78,7 +78,7 @@ func (r *VacationRepo) Delete(ctx context.Context, userID, guildID string) error
 	return nil
 }
 
-func (r *VacationRepo) EndCovering(ctx context.Context, userID, guildID string, day time.Time) ([]domain.Vacation, error) {
+func (r *VacationRepo) EndCovering(ctx context.Context, userID, guildID string, day, last time.Time) ([]domain.Vacation, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -96,10 +96,10 @@ func (r *VacationRepo) EndCovering(ctx context.Context, userID, guildID string, 
 	}
 	for _, v := range ended {
 		// The days already gone stay vacation, so they keep not counting against anyone.
-		if v.From.Equal(domain.TruncateDay(day)) {
+		if v.From.After(domain.TruncateDay(last)) {
 			_, err = tx.Exec(ctx, `DELETE FROM vacations WHERE id = $1`, v.ID)
 		} else {
-			_, err = tx.Exec(ctx, `UPDATE vacations SET ends_on = $2 WHERE id = $1`, v.ID, day.AddDate(0, 0, -1))
+			_, err = tx.Exec(ctx, `UPDATE vacations SET ends_on = $2 WHERE id = $1`, v.ID, domain.TruncateDay(last))
 		}
 		if err != nil {
 			return nil, err

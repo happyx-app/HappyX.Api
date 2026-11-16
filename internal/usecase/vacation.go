@@ -121,9 +121,11 @@ func (s *Service) SetMemberOwnVacation(ctx context.Context, guildID, userID stri
 }
 
 // EndMemberVacations is /happyx resume: the member is back, so the vacations that cover today in
-// the guild, their own and the one set for them there, end yesterday and today's survey reaches
-// them. The days already gone stay vacation. Vacations planned for later stay too. It returns
-// the ones it ended, as they were; having none is fine.
+// the guild, their own and the one set for them there, end. Before today's survey goes out they
+// end yesterday, and the survey reaches them today. Once it went out without them, today stays
+// vacation: otherwise it would count as a day they didn't answer, and break their streak. The
+// days already gone stay vacation, and vacations planned for later stay too. It returns the ones
+// it ended, as they were; having none is fine.
 func (s *Service) EndMemberVacations(ctx context.Context, guildID, userID string) ([]domain.Vacation, error) {
 	g, err := s.activeGuild(ctx, guildID)
 	if err != nil {
@@ -132,7 +134,22 @@ func (s *Service) EndMemberVacations(ctx context.Context, guildID, userID string
 	if s.vacations == nil {
 		return nil, nil
 	}
-	return s.vacations.EndCovering(ctx, userID, guildID, s.today(g))
+	today, last := s.today(g), s.today(g).AddDate(0, 0, -1)
+	if s.surveySentToday(g) {
+		last = today
+	}
+	return s.vacations.EndCovering(ctx, userID, guildID, today, last)
+}
+
+// surveySentToday reports whether today's survey has gone out in g: the survey is on, today is a
+// working day and its hour has passed, in the guild's timezone.
+func (s *Service) surveySentToday(g domain.Guild) bool {
+	loc, err := time.LoadLocation(g.Settings.Timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	now := s.now().In(loc)
+	return g.Settings.SurveyEnabled && g.Settings.IsWorkingDay(now) && now.Hour() >= g.Settings.SurveyHour
 }
 
 // VacationNotices returns the vacations admins set that the bot has yet to tell the person about.
