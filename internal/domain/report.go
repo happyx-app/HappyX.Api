@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"crypto/sha256"
 	"slices"
 	"strings"
 	"time"
@@ -133,10 +132,9 @@ type DayStat struct {
 	Recipients *int
 }
 
-// ReportMessage is an optional comment left with a mood. An anonymous comment carries only
-// its text: its day and mood are left out, since in a small team either can point to its
-// author. Day, Mood, MemberDiscordID and Username are set only for a comment whose author is
-// shown: the guild is not anonymous now and was not when it was written.
+// ReportMessage is an optional comment left with a mood, with its day. MemberDiscordID and
+// Username are set only for a comment whose author is shown: the guild is not anonymous now
+// and was not when it was written.
 type ReportMessage struct {
 	Day             time.Time
 	Mood            Mood
@@ -185,8 +183,7 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		anonymous    map[string]struct{}
 		k            int
 		distribution map[Mood]int
-		named        []ReportMessage
-		unnamed      []ReportMessage
+		messages     []ReportMessage
 	}
 	perDay := map[time.Time]*acc{}
 	people := map[string]struct{}{}
@@ -207,26 +204,24 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 			a.anonymous[e.MemberDiscordID] = struct{}{}
 			a.k = max(a.k, e.AnonymityThreshold)
 		}
-		switch {
-		case e.Message == "":
-		case shown:
-			a.named = append(a.named, ReportMessage{Day: d, Mood: e.Mood, Message: e.Message,
-				MemberDiscordID: e.MemberDiscordID, Username: usernames[e.MemberDiscordID]})
-		default:
-			a.unnamed = append(a.unnamed, ReportMessage{Message: e.Message})
+		if e.Message != "" {
+			m := ReportMessage{Day: d, Mood: e.Mood, Message: e.Message}
+			if shown {
+				m.MemberDiscordID, m.Username = e.MemberDiscordID, usernames[e.MemberDiscordID]
+			}
+			a.messages = append(a.messages, m)
 		}
 	}
 	r.Respondents = len(people)
 
 	withheld := func(a *acc) bool { return WithheldDay(len(a.anonymous), max(k, a.k)) }
-	// Days in order, so named comments keep the order they were written in.
+	// Days in order, so comments keep the order they were written in.
 	days := make([]time.Time, 0, len(perDay))
 	for d := range perDay {
 		days = append(days, d)
 	}
 	slices.SortFunc(days, func(a, b time.Time) int { return a.Compare(b) })
 	shown, total := 0, 0
-	var named, unnamed []ReportMessage
 	for _, d := range days {
 		a := perDay[d]
 		if withheld(a) {
@@ -237,21 +232,12 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		for m, n := range a.distribution {
 			r.Distribution[m] += n
 		}
-		named = append(named, a.named...)
-		unnamed = append(unnamed, a.unnamed...)
+		r.Messages = append(r.Messages, a.messages...)
 	}
 	r.Withheld = r.Responses > 0 && shown == 0
 	if shown > 0 {
 		r.Average = float64(total) / float64(shown)
 	}
-	// Anonymous comments come in an order that has nothing to do with when they were written,
-	// yet stays the same each time the report is opened.
-	key := func(m ReportMessage) []byte {
-		h := sha256.Sum256([]byte(guild.DiscordID + "|" + from.Format("2006-01-02") + "|" + m.Message))
-		return h[:]
-	}
-	slices.SortStableFunc(unnamed, func(a, b ReportMessage) int { return slices.Compare(key(a), key(b)) })
-	r.Messages = append(named, unnamed...)
 	// Non-working days only show up when someone answered anyway.
 	for d := TruncateDay(from); !d.After(TruncateDay(to)); d = d.AddDate(0, 0, 1) {
 		a := perDay[d]
