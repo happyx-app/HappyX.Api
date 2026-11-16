@@ -603,7 +603,7 @@ func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Vie
 	for _, ev := range evs {
 		d := evolutionDTO{
 			DiscordGuildID: ev.Guild.DiscordID, Name: ev.Guild.Name, Timezone: ev.Guild.Settings.Timezone, Anonymous: ev.AnonymousToday,
-			AnonymityThreshold: max(ev.Guild.Settings.AnonymityThreshold, domain.MinAnonymityThreshold),
+			AnonymityThreshold: ev.ThresholdToday,
 			Responses:          ev.Responses, Average: ev.Average, Streak: ev.Streak, Entries: []myMoodDTO{},
 		}
 		if n := ev.Guild.Settings.NamedSince; !n.IsZero() {

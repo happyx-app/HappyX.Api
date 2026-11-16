@@ -22,13 +22,17 @@ type guildDTO struct {
 	// right after turning it off. Left out while the guild is anonymous.
 	NamedSince         string `json:"named_since,omitempty"`
 	AnonymityThreshold int    `json:"anonymity_threshold"`
-	SurveyEnabled      bool   `json:"survey_enabled"`
-	Timezone           string `json:"timezone"`
-	Language           string `json:"language"`
-	SurveyHour         int    `json:"survey_hour"`
-	ReportFrequency    string `json:"report_frequency"`
-	ReportDM           bool   `json:"report_dm"`
-	KudosChannelID     string `json:"kudos_channel_id"`
+	// A lowered anonymity_threshold counts from anonymity_threshold_since (the day after it was
+	// lowered); answers for earlier days keep anonymity_threshold_before. Both left out otherwise.
+	ThresholdSince  string `json:"anonymity_threshold_since,omitempty"`
+	ThresholdBefore int    `json:"anonymity_threshold_before,omitempty"`
+	SurveyEnabled   bool   `json:"survey_enabled"`
+	Timezone        string `json:"timezone"`
+	Language        string `json:"language"`
+	SurveyHour      int    `json:"survey_hour"`
+	ReportFrequency string `json:"report_frequency"`
+	ReportDM        bool   `json:"report_dm"`
+	KudosChannelID  string `json:"kudos_channel_id"`
 	// TeamChannelID is where HappyX tells the team things; "" means the kudos channel.
 	TeamChannelID string `json:"team_channel_id"`
 	// TeamSummary posts the week's summary there every Monday.
@@ -73,8 +77,13 @@ func toGuildDTO(g domain.Guild) guildDTO {
 	if !g.Settings.NamedSince.IsZero() {
 		named = g.Settings.NamedSince.Format(dateLayout)
 	}
+	since := ""
+	if !g.Settings.ThresholdSince.IsZero() {
+		since = g.Settings.ThresholdSince.Format(dateLayout)
+	}
 	return guildDTO{
 		NamedSince: named, AnonymityThreshold: g.Settings.AnonymityThreshold,
+		ThresholdSince: since, ThresholdBefore: g.Settings.ThresholdBefore,
 		DiscordID: g.DiscordID, Name: g.Name, AdminDiscordID: g.AdminDiscordID,
 		Anonymous: g.Settings.Anonymous, SurveyEnabled: g.Settings.SurveyEnabled, Timezone: g.Settings.Timezone, Language: g.Settings.Language,
 		SurveyHour: g.Settings.SurveyHour, ReportFrequency: string(g.Settings.ReportFrequency), ReportDM: g.Settings.ReportDM,

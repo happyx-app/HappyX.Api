@@ -594,3 +594,47 @@ func TestSyncKeepsOptOut(t *testing.T) {
 		t.Fatalf("explicit opt-in should reactivate: %+v %v", m, err)
 	}
 }
+
+// Lowering the threshold counts from the next day: today's survey went out under the higher
+// one, so answers to it (and to yesterday's, still open) keep that one. Raising counts at once.
+func TestLoweringThresholdCountsFromTomorrow(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{now: time.Date(2026, 10, 22, 14, 0, 0, 0, time.UTC)} // Thursday, after the survey
+	svc := testServiceClock(t, clock.Now)
+	mustRegister(t, svc, guildA)
+	mustJoin(t, svc, guildA, user1)
+	mustJoin(t, svc, guildA, user2)
+	one := 1
+	g, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &one})
+	if err != nil || g.Settings.AnonymityThreshold != 1 || g.Settings.ThresholdBefore != 3 ||
+		!g.Settings.ThresholdSince.Equal(day("2026-10-23")) {
+		t.Fatalf("lowered: %+v %v", g.Settings, err)
+	}
+	answer := func(u string, d string) {
+		t.Helper()
+		if _, err := svc.RecordMood(ctx, usecase.RecordMoodInput{GuildID: guildA, UserID: u, Mood: domain.MoodGood, Message: "hola", Day: day(d)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	answer(user1, "2026-10-22")
+	if r, err := svc.Report(ctx, guildA, day("2026-10-22"), day("2026-10-22")); err != nil || !r.Withheld || r.Days[0].AnonymityThreshold != 3 {
+		t.Fatalf("today's survey went out under 3: %+v %v", r, err)
+	}
+	// The next day the lower one counts, but yesterday's card still keeps 3.
+	clock.now = time.Date(2026, 10, 23, 14, 0, 0, 0, time.UTC)
+	answer(user1, "2026-10-23")
+	answer(user2, "2026-10-22")
+	r, err := svc.Report(ctx, guildA, day("2026-10-22"), day("2026-10-23"))
+	if err != nil || !r.Days[0].Withheld || r.Days[0].AnonymityThreshold != 3 || r.Days[1].Withheld || len(r.Messages) != 1 {
+		t.Fatalf("from the day after: %+v %v", r, err)
+	}
+	// Raising counts at once and ends the pending lowering.
+	clock.now = time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC)
+	if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &one}); err != nil {
+		t.Fatal(err)
+	}
+	four := 4
+	if g, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &four}); err != nil || !g.Settings.ThresholdSince.IsZero() || g.Settings.ThresholdBefore != 0 {
+		t.Fatalf("raised: %+v %v", g.Settings, err)
+	}
+}

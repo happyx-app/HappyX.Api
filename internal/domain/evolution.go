@@ -15,13 +15,16 @@ type Evolution struct {
 	Streak int
 	// AnonymousToday is whether today's answer is anonymous (see GuildSettings.AnonymousOn).
 	AnonymousToday bool
+	// ThresholdToday is the anonymity threshold today's answer is given under (see
+	// GuildSettings.ThresholdOn).
+	ThresholdToday int
 }
 
 // BuildEvolution summarises entries (the person's answers in g, oldest first, which may
 // reach before from so the streak can be counted) for the period [from, to]. off are the
 // person's vacations in g.
 func BuildEvolution(g Guild, entries []MoodEntry, off Vacations, from, to, today time.Time) Evolution {
-	ev := Evolution{Guild: g, AnonymousToday: g.Settings.AnonymousOn(today)}
+	ev := Evolution{Guild: g, AnonymousToday: g.Settings.AnonymousOn(today), ThresholdToday: g.Settings.ThresholdOn(today)}
 	answered := map[time.Time]bool{}
 	sum := 0
 	for _, e := range entries {

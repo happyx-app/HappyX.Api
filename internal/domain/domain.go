@@ -69,6 +69,11 @@ type GuildSettings struct {
 	// average, the moods or the comments of anonymous answers. DefaultAnonymityThreshold unless
 	// the admin changes it; with 1 everything shows, even when a single person answered.
 	AnonymityThreshold int
+	// ThresholdSince and ThresholdBefore: a lowered threshold counts from ThresholdSince, the day
+	// after it was lowered, so nobody answers a survey that went out under the higher one with the
+	// lower one; until then answers keep ThresholdBefore. Zero when no lowering is pending.
+	ThresholdSince  time.Time
+	ThresholdBefore int
 	// SurveyEnabled sends the daily survey and the «Who's who?» game. A new server starts with it
 	// off, until the admin starts the survey from the setup assistant or the web. Reports and
 	// kudos don't depend on it.
@@ -161,6 +166,16 @@ const (
 	DefaultAnonymityThreshold = SafeAnonymityThreshold
 	MaxAnonymityThreshold     = 50
 )
+
+// ThresholdOn is the anonymity threshold an answer for day is given under: the current one, or
+// the one before a lowering that only counts from ThresholdSince.
+func (s GuildSettings) ThresholdOn(day time.Time) int {
+	k := max(s.AnonymityThreshold, MinAnonymityThreshold)
+	if !s.ThresholdSince.IsZero() && TruncateDay(day).Before(s.ThresholdSince) {
+		return max(k, s.ThresholdBefore)
+	}
+	return k
+}
 
 // AnonymousOn reports whether an answer for day is anonymous: always while the guild is, and,
 // once it turned anonymity off, for the days before NamedSince.
