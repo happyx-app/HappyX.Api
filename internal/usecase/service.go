@@ -163,8 +163,22 @@ func (s *Service) UpdateGuildSettings(ctx context.Context, guildID string, p Set
 	if p.SurveyEnabled != nil {
 		st.SurveyEnabled = *p.SurveyEnabled
 	}
+	// Raising the threshold counts at once. Lowering it counts from tomorrow: today's survey went
+	// out saying the higher one, and answers to it keep that one.
+	tz := g
+	tz.Settings.Timezone = st.Timezone
+	today := s.today(tz)
+	if !st.ThresholdSince.IsZero() && !today.Before(st.ThresholdSince) {
+		st.ThresholdSince, st.ThresholdBefore = time.Time{}, 0
+	}
 	if p.AnonymityThreshold != nil {
+		now := g.Settings.ThresholdOn(today)
 		st.AnonymityThreshold = *p.AnonymityThreshold
+		if st.AnonymityThreshold < now {
+			st.ThresholdSince, st.ThresholdBefore = today.AddDate(0, 0, 1), now
+		} else {
+			st.ThresholdSince, st.ThresholdBefore = time.Time{}, 0
+		}
 	}
 	switch {
 	case st.Anonymous:

@@ -127,7 +127,7 @@ func TestMoodFlow(t *testing.T) {
 	for _, s := range []struct {
 		body string
 		want int
-	}{{`{"anonymity_threshold":5}`, 200}, {`{"anonymity_threshold":2}`, 400}} {
+	}{{`{"anonymity_threshold":5}`, 200}, {`{"anonymity_threshold":1}`, 200}, {`{"anonymity_threshold":0}`, 400}} {
 		if code, body := do(t, srv, "PATCH", "/v1/guilds/"+g, key, s.body); code != s.want {
 			t.Fatalf("%s: %d %v", s.body, code, body)
 		}

@@ -64,8 +64,11 @@ Anonymous comments come with their text only: no day and no mood, in an order un
 they were written that stays the same between readings. In a small team, the day or the face
 would point to the author.
 
-**Anonymity threshold.** `anonymity_threshold` (default 3, from 3 to 50) is the fewest people
-whose anonymous answers a day needs before it shows more than counts. A day with anonymous answers
+**Anonymity threshold.** `anonymity_threshold` (default 3, from 1 to 50) is the fewest people
+whose anonymous answers a day needs before it shows more than counts. Below 3 an answer can point
+to whoever gave it (with 2, an admin who answered works out the other one; with 1, a lone answer
+shows as it is), so 3 is the default; an admin may still go lower, and the bot and the web tell
+members so. A day with anonymous answers
 from fewer people has `withheld: true` and keeps only `responses`. Nothing else from it counts
 anywhere: not in the period's `average` or `distribution` (which may then add up to fewer than
 `responses`), and not in the comments. Hiding only that day's own average would not be enough:
@@ -73,7 +76,10 @@ the period's figures minus the other days' would give it back, and so would two 
 periods differ by that day. Only anonymous answers count towards the threshold, because named ones
 are known and would give the rest away. Each answer keeps the threshold in force when it was given,
 and a day uses the highest of those and the current one, so lowering the threshold never shows a
-day that already has answers (changing an answer keeps the higher one). Each day in a report says
+day that already has answers (changing an answer keeps the higher one). Lowering it counts from the
+next day: today's survey went out under the higher one, so answers for today and earlier keep it.
+The guild then has `anonymity_threshold_since` (that next day) and `anonymity_threshold_before`;
+both are left out otherwise. Raising it counts at once. Each day in a report says
 the threshold it was judged by (`anonymity_threshold`), and the report's `anonymity_threshold` is
 the highest of its withheld days' when that is above the current one. When every answer falls on withheld days, the report has
 `withheld: true` and keeps only `responses` and `respondents`. The bot, the dashboard and the
