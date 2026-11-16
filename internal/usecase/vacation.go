@@ -135,21 +135,16 @@ func (s *Service) EndMemberVacations(ctx context.Context, guildID, userID string
 		return nil, nil
 	}
 	today, last := s.today(g), s.today(g).AddDate(0, 0, -1)
-	if s.surveySentToday(g) {
+	// Whether today's survey went out is what the bot recorded, not the configured hour: a send
+	// that was late, or failed and was given back, still has to reach them.
+	sent, err := s.dispatches.Held(ctx, guildID, domain.DispatchSurvey, today)
+	if err != nil {
+		return nil, err
+	}
+	if sent {
 		last = today
 	}
 	return s.vacations.EndCovering(ctx, userID, guildID, today, last)
-}
-
-// surveySentToday reports whether today's survey has gone out in g: the survey is on, today is a
-// working day and its hour has passed, in the guild's timezone.
-func (s *Service) surveySentToday(g domain.Guild) bool {
-	loc, err := time.LoadLocation(g.Settings.Timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	now := s.now().In(loc)
-	return g.Settings.SurveyEnabled && g.Settings.IsWorkingDay(now) && now.Hour() >= g.Settings.SurveyHour
 }
 
 // VacationNotices returns the vacations admins set that the bot has yet to tell the person about.

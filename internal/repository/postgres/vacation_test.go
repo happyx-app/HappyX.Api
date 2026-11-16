@@ -203,8 +203,9 @@ func pgPool(t *testing.T) *pgxpool.Pool {
 }
 
 // Resuming ends the vacations that cover today, whoever set them, and leaves later ones alone.
-// Before today's survey goes out, today is a working day again and the survey reaches the member;
-// once it went out without them, today stays vacation so it doesn't count as a day not answered.
+// Until the bot records today's survey as sent, today is a working day again and the survey reaches
+// the member; once it went out without them, today stays vacation so it doesn't count as a day not
+// answered. What counts is the recorded send, not the survey hour.
 func TestResumeEndsVacations(t *testing.T) {
 	ctx := context.Background()
 	clock := &testClock{now: time.Date(2026, 11, 6, 8, 0, 0, 0, time.UTC)} // Friday, 9:00 in Madrid; the survey goes at 13:00
@@ -220,6 +221,12 @@ func TestResumeEndsVacations(t *testing.T) {
 		}
 		if _, err := svc.SetGuildVacation(ctx, owner, guildA, user2, day("2026-11-20"), day("2026-11-25")); err != nil {
 			t.Fatal(err)
+		}
+	}
+	sent := func(d time.Time) {
+		t.Helper()
+		if ok, err := svc.ClaimDispatch(ctx, guildA, domain.DispatchSurvey, d); err != nil || !ok {
+			t.Fatalf("claim the survey: %v %v", ok, err)
 		}
 	}
 	mine := func() []domain.Vacation {
@@ -247,8 +254,19 @@ func TestResumeEndsVacations(t *testing.T) {
 		t.Fatalf("nothing to end: %+v %v", ended, err)
 	}
 
-	// After the survey went out: today stays vacation, the rest of it ends.
+	// Past the survey hour but not sent yet (late, or given back after reaching nobody): the survey
+	// can still reach them, so the vacation ends yesterday.
 	clock.now = time.Date(2026, 11, 6, 17, 0, 0, 0, time.UTC) // 18:00 in Madrid
+	set()
+	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 1 {
+		t.Fatalf("resume before the late survey: %+v %v", ended, err)
+	}
+	if vs := mine(); len(vs) != 2 || !vs[0].To.Equal(day("2026-11-05")) {
+		t.Fatalf("after resuming before the late survey: %+v", vs)
+	}
+
+	// After the survey went out: today stays vacation, the rest of it ends.
+	sent(day("2026-11-06"))
 	set()
 	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 1 {
 		t.Fatalf("resume after the survey: %+v %v", ended, err)
@@ -268,7 +286,7 @@ func TestResumeEndsVacations(t *testing.T) {
 	if vs := mine(); len(vs) != 1 || !vs[0].From.Equal(day("2026-11-20")) {
 		t.Fatalf("one starting today, resumed in the morning, is gone: %+v", vs)
 	}
-	clock.now = time.Date(2026, 11, 9, 17, 0, 0, 0, time.UTC)
+	sent(day("2026-11-09"))
 	if _, err := svc.SetMemberOwnVacation(ctx, guildA, user2, day("2026-11-09"), day("2026-11-12")); err != nil {
 		t.Fatal(err)
 	}

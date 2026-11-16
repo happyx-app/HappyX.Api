@@ -23,6 +23,16 @@ type GuildHealth struct {
 	OptedOut int
 	// LastSurvey is the latest survey the bot finished sending, nil before the first one.
 	LastSurvey *DispatchStat
+	// TeamChannel is where HappyX posts to the team (the team channel, or else the kudos one),
+	// where whoever has DMs closed can answer. Nil when the guild has neither.
+	TeamChannel *TeamChannelHealth
+}
+
+// TeamChannelHealth says whether HappyX can post in the team channel. CanPost is nil when the
+// bot hasn't told the API about that channel, so nobody knows.
+type TeamChannelHealth struct {
+	DiscordID string
+	CanPost   *bool
 }
 
 // The free plan the market study proposes: the survey reaches up to FreePlanPeople, and a

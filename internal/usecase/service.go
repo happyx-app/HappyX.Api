@@ -612,6 +612,22 @@ func (s *Service) GuildHealth(ctx context.Context, g domain.Guild) (domain.Guild
 		last := sent[len(sent)-1]
 		h.LastSurvey = &last
 	}
+	id := g.Settings.TeamChannelID
+	if id == "" {
+		id = g.Settings.KudosChannelID
+	}
+	if id != "" {
+		h.TeamChannel = &domain.TeamChannelHealth{DiscordID: id}
+		channels, err := s.access.ListChannels(ctx, g.DiscordID)
+		if err != nil {
+			return h, err
+		}
+		for _, c := range channels {
+			if c.DiscordID == id {
+				h.TeamChannel.CanPost = &c.CanPost
+			}
+		}
+	}
 	return h, nil
 }
 

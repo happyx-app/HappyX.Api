@@ -328,6 +328,13 @@ type healthDTO struct {
 	OptedOut   int            `json:"opted_out"`
 	OnVacation int            `json:"on_vacation"`
 	LastSurvey *lastSurveyDTO `json:"last_survey"`
+	// TeamChannel: where HappyX posts to the team; can_post is left out when nobody knows.
+	TeamChannel *teamChannelDTO `json:"team_channel"`
+}
+
+type teamChannelDTO struct {
+	ID      string `json:"id"`
+	CanPost *bool  `json:"can_post,omitempty"`
 }
 
 type lastSurveyDTO struct {
@@ -341,6 +348,9 @@ func toHealthDTO(h domain.GuildHealth) healthDTO {
 	out := healthDTO{Audience: h.Audience, OptedOut: h.OptedOut, OnVacation: h.OnVacation}
 	if l := h.LastSurvey; l != nil {
 		out.LastSurvey = &lastSurveyDTO{Day: l.Day.Format(dateLayout), Recipients: l.Recipients, Failed: l.Failed, ClosedDMs: l.ClosedDMs}
+	}
+	if c := h.TeamChannel; c != nil {
+		out.TeamChannel = &teamChannelDTO{ID: c.DiscordID, CanPost: c.CanPost}
 	}
 	return out
 }

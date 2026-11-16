@@ -68,6 +68,35 @@ func TestWebDashboardInsights(t *testing.T) {
 	if code, bh := do(t, srv, "GET", "/v1/guilds/"+guildA+"/health", key, ""); code != 200 || bh["audience"] != 2.0 || bh["last_survey"].(map[string]any)["closed_dms"] != 1.0 {
 		t.Fatalf("bot health: %d %v", code, bh)
 	}
+	// Where whoever has DMs closed can answer, and whether HappyX can post there.
+	if h["team_channel"] != nil {
+		t.Fatalf("team channel without one: %v", h["team_channel"])
+	}
+	const team, general = "111111111111111111", "222222222222222222"
+	teamChannel := func() map[string]any {
+		t.Helper()
+		_, h := get(t, a, base+"/health")
+		c, _ := h["team_channel"].(map[string]any)
+		return c
+	}
+	for _, s := range []struct{ method, path, body string }{
+		{"PUT", "/v1/guilds/" + guildA + "/channels", `{"channels":[{"id":"` + team + `","name":"equipo","position":1,"can_post":false},{"id":"` + general + `","name":"general","position":2,"can_post":true}]}`},
+		{"PATCH", "/v1/guilds/" + guildA, `{"team_channel_id":"` + team + `"}`},
+	} {
+		if code, body := do(t, srv, s.method, s.path, key, s.body); code/100 != 2 {
+			t.Fatalf("%s %s: %d %v", s.method, s.path, code, body)
+		}
+	}
+	if c := teamChannel(); c["id"] != team || c["can_post"] != false {
+		t.Fatalf("team channel HappyX can't post in: %v", c)
+	}
+	// Without a team channel, the kudos one is where HappyX posts.
+	if code, body := do(t, srv, "PATCH", "/v1/guilds/"+guildA, key, `{"team_channel_id":"","kudos_channel_id":"`+general+`"}`); code/100 != 2 {
+		t.Fatalf("settings: %d %v", code, body)
+	}
+	if c := teamChannel(); c["id"] != general || c["can_post"] != true {
+		t.Fatalf("kudos channel as the team's: %v", c)
+	}
 	if code, _ := do(t, srv, "GET", "/v1/guilds/999999999999999999/health", key, ""); code != 404 {
 		t.Fatalf("health of an unknown server: %d", code)
 	}
