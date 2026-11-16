@@ -186,9 +186,9 @@ type VacationRepository interface {
 	// domain.ErrNotFound when there is none.
 	Delete(ctx context.Context, userID, guildID string) error
 	// EndCovering ends the vacations that apply to the person in guildID, their own and the one
-	// set there, that cover day: they now end the day before, and one starting on day is removed.
+	// set there, that cover day: they now end on last, and one starting after last is removed.
 	// Later ones stay. It returns them as they were.
-	EndCovering(ctx context.Context, userID, guildID string, day time.Time) ([]domain.Vacation, error)
+	EndCovering(ctx context.Context, userID, guildID string, day, last time.Time) ([]domain.Vacation, error)
 	// ForUser returns the person's vacations that end on since or later: their own and the ones
 	// set in any guild, own first.
 	ForUser(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error)

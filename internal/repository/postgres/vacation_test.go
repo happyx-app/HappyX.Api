@@ -130,34 +130,9 @@ func TestVacations(t *testing.T) {
 	if vs, err := svc.MemberVacations(ctx, guildA, user2); err != nil || len(vs) != 1 {
 		t.Fatalf("own vacation from the bot should apply everywhere: %+v %v", vs, err)
 	}
-	// Resuming removes one that starts today.
-	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 1 || !ended[0].To.Equal(day("2026-11-07")) {
-		t.Fatalf("resume: %+v %v", ended, err)
-	}
-	if vs, _ := svc.MemberVacations(ctx, guildB, user2); len(vs) != 0 {
-		t.Fatalf("resume left vacations: %+v", vs)
-	}
-	// Resuming during a vacation ends it yesterday, so the days gone stay vacation, and leaves the
-	// one planned for later alone, whoever set each.
-	if _, err := svc.SetMemberOwnVacation(ctx, guildA, user2, day("2026-11-04"), day("2026-11-10")); err != nil {
+	// Resuming ends it: see TestResumeEndsVacations.
+	if _, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := svc.SetGuildVacation(ctx, owner, guildA, user2, day("2026-11-20"), day("2026-11-25")); err != nil {
-		t.Fatal(err)
-	}
-	ended, err := svc.EndMemberVacations(ctx, guildA, user2)
-	if err != nil || len(ended) != 1 || ended[0].GuildDiscordID != "" || !ended[0].To.Equal(day("2026-11-10")) {
-		t.Fatalf("resume during a vacation: %+v %v", ended, err)
-	}
-	if r := recipients(t, svc, guildA, usecase.MembersSurvey); !r[user2] {
-		t.Fatal("back from vacation but no survey today")
-	}
-	all, err := svc.MyVacations(ctx, domain.Viewer{DiscordID: user2})
-	if err != nil || len(all) != 2 || !all[0].To.Equal(day("2026-11-05")) || !all[1].From.Equal(day("2026-11-20")) {
-		t.Fatalf("after resume: %+v %v", all, err)
-	}
-	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 0 {
-		t.Fatalf("nothing to end: %+v %v", ended, err)
 	}
 
 	// Erasing someone's data takes their vacations.
@@ -225,4 +200,100 @@ func pgPool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	return pool
+}
+
+// Resuming ends the vacations that cover today, whoever set them, and leaves later ones alone.
+// Until the bot records today's survey as sent, today is a working day again and the survey reaches
+// the member; once it went out without them, today stays vacation so it doesn't count as a day not
+// answered. What counts is the recorded send, not the survey hour.
+func TestResumeEndsVacations(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{now: time.Date(2026, 11, 6, 8, 0, 0, 0, time.UTC)} // Friday, 9:00 in Madrid; the survey goes at 13:00
+	svc := testServiceClock(t, clock.Now)
+	mustRegister(t, svc, guildA)
+	mustStartSurvey(t, svc, guildA)
+	mustJoin(t, svc, guildA, user2)
+	owner := domain.Viewer{DiscordID: admin}
+	set := func() {
+		t.Helper()
+		if _, err := svc.SetMemberOwnVacation(ctx, guildA, user2, day("2026-11-04"), day("2026-11-10")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.SetGuildVacation(ctx, owner, guildA, user2, day("2026-11-20"), day("2026-11-25")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sent := func(d time.Time) {
+		t.Helper()
+		if ok, err := svc.ClaimDispatch(ctx, guildA, domain.DispatchSurvey, d); err != nil || !ok {
+			t.Fatalf("claim the survey: %v %v", ok, err)
+		}
+	}
+	mine := func() []domain.Vacation {
+		t.Helper()
+		vs, err := svc.MyVacations(ctx, domain.Viewer{DiscordID: user2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return vs
+	}
+
+	// Before the survey: the vacation ends yesterday and today's survey reaches them.
+	set()
+	ended, err := svc.EndMemberVacations(ctx, guildA, user2)
+	if err != nil || len(ended) != 1 || ended[0].GuildDiscordID != "" || !ended[0].To.Equal(day("2026-11-10")) {
+		t.Fatalf("resume during a vacation: %+v %v", ended, err)
+	}
+	if r := recipients(t, svc, guildA, usecase.MembersSurvey); !r[user2] {
+		t.Fatal("back from vacation but no survey today")
+	}
+	if vs := mine(); len(vs) != 2 || !vs[0].To.Equal(day("2026-11-05")) || !vs[1].From.Equal(day("2026-11-20")) {
+		t.Fatalf("after resume: %+v", vs)
+	}
+	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 0 {
+		t.Fatalf("nothing to end: %+v %v", ended, err)
+	}
+
+	// Past the survey hour but not sent yet (late, or given back after reaching nobody): the survey
+	// can still reach them, so the vacation ends yesterday.
+	clock.now = time.Date(2026, 11, 6, 17, 0, 0, 0, time.UTC) // 18:00 in Madrid
+	set()
+	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 1 {
+		t.Fatalf("resume before the late survey: %+v %v", ended, err)
+	}
+	if vs := mine(); len(vs) != 2 || !vs[0].To.Equal(day("2026-11-05")) {
+		t.Fatalf("after resuming before the late survey: %+v", vs)
+	}
+
+	// After the survey went out: today stays vacation, the rest of it ends.
+	sent(day("2026-11-06"))
+	set()
+	if ended, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil || len(ended) != 1 {
+		t.Fatalf("resume after the survey: %+v %v", ended, err)
+	}
+	if vs := mine(); len(vs) != 2 || !vs[0].To.Equal(day("2026-11-06")) || !vs[1].From.Equal(day("2026-11-20")) {
+		t.Fatalf("after resuming in the evening, today stays vacation: %+v", vs)
+	}
+
+	// One starting today: removed before the survey, kept for today after it.
+	clock.now = time.Date(2026, 11, 9, 8, 0, 0, 0, time.UTC) // Monday morning
+	if _, err := svc.SetMemberOwnVacation(ctx, guildA, user2, day("2026-11-09"), day("2026-11-12")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil {
+		t.Fatal(err)
+	}
+	if vs := mine(); len(vs) != 1 || !vs[0].From.Equal(day("2026-11-20")) {
+		t.Fatalf("one starting today, resumed in the morning, is gone: %+v", vs)
+	}
+	sent(day("2026-11-09"))
+	if _, err := svc.SetMemberOwnVacation(ctx, guildA, user2, day("2026-11-09"), day("2026-11-12")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.EndMemberVacations(ctx, guildA, user2); err != nil {
+		t.Fatal(err)
+	}
+	if vs := mine(); len(vs) != 2 || !vs[0].From.Equal(day("2026-11-09")) || !vs[0].To.Equal(day("2026-11-09")) {
+		t.Fatalf("one starting today, resumed in the evening, keeps today: %+v", vs)
+	}
 }
