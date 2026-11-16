@@ -285,7 +285,7 @@ func TestAnonymityThresholdSetting(t *testing.T) {
 	if err != nil || g.Settings.AnonymityThreshold != 5 {
 		t.Fatalf("threshold 5: %+v %v", g.Settings, err)
 	}
-	for _, bad := range []int{2, 51} {
+	for _, bad := range []int{0, 51} {
 		if _, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &bad}); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("threshold %d: want ErrInvalid, got %v", bad, err)
 		}
@@ -312,6 +312,14 @@ func TestAnonymityThresholdSetting(t *testing.T) {
 	}
 	if r, err := svc.Report(ctx, guildA, day, day); err != nil || !r.Days[0].Withheld || r.Days[0].AnonymityThreshold != 5 {
 		t.Fatalf("a changed answer takes the lower threshold: %+v %v", r, err)
+	}
+	// Down to 1, the minimum: the day answered under 5 still shows only counts.
+	one := 1
+	if g, err := svc.UpdateGuildSettings(ctx, guildA, usecase.SettingsPatch{AnonymityThreshold: &one}); err != nil || g.Settings.AnonymityThreshold != 1 {
+		t.Fatalf("threshold 1: %+v %v", g.Settings, err)
+	}
+	if r, err := svc.Report(ctx, guildA, day, day); err != nil || !r.Days[0].Withheld || r.Days[0].AnonymityThreshold != 5 {
+		t.Fatalf("a day answered under 5 shows at 1: %+v %v", r, err)
 	}
 }
 

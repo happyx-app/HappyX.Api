@@ -66,7 +66,8 @@ type GuildSettings struct {
 	// are anonymous when they are not. Zero while the guild is anonymous.
 	NamedSince time.Time
 	// AnonymityThreshold is the fewest people who must have answered before a report shows the
-	// average, the moods or the comments of anonymous answers. At least MinAnonymityThreshold.
+	// average, the moods or the comments of anonymous answers. DefaultAnonymityThreshold unless
+	// the admin changes it; with 1 everything shows, even when a single person answered.
 	AnonymityThreshold int
 	// SurveyEnabled sends the daily survey and the «Who's who?» game. A new server starts with it
 	// off, until the admin starts the survey from the setup assistant or the web. Reports and
@@ -150,11 +151,15 @@ func (s GuildSettings) IsWorkingDay(day time.Time) bool {
 	return w.Has(day.Weekday())
 }
 
-// MinAnonymityThreshold and MaxAnonymityThreshold bound AnonymityThreshold. Below 3, one person
-// could work out what the other answered from the average.
+// MinAnonymityThreshold and MaxAnonymityThreshold bound AnonymityThreshold. Below
+// SafeAnonymityThreshold an answer can point to whoever gave it: with 2, an admin who answered
+// works out the other person's answer from the average; with 1, a day with a single answer shows
+// it as it is. The admin may still choose so, and members are told (see the bot and the web).
 const (
-	MinAnonymityThreshold = 3
-	MaxAnonymityThreshold = 50
+	MinAnonymityThreshold     = 1
+	SafeAnonymityThreshold    = 3
+	DefaultAnonymityThreshold = SafeAnonymityThreshold
+	MaxAnonymityThreshold     = 50
 )
 
 // AnonymousOn reports whether an answer for day is anonymous: always while the guild is, and,
@@ -166,7 +171,7 @@ func (s GuildSettings) AnonymousOn(day time.Time) bool {
 func DefaultGuildSettings() GuildSettings {
 	return GuildSettings{
 		Anonymous:          true,
-		AnonymityThreshold: MinAnonymityThreshold,
+		AnonymityThreshold: DefaultAnonymityThreshold,
 		Timezone:           "Europe/Madrid",
 		SurveyHour:         13,
 		ReportFrequency:    ReportWeekly,

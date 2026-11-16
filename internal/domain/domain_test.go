@@ -250,9 +250,37 @@ func TestAnonymousOn(t *testing.T) {
 	if !s.AnonymousOn(day("2026-10-20")) || s.AnonymousOn(day("2026-10-21")) {
 		t.Fatal("names start on NamedSince")
 	}
-	s.AnonymityThreshold = 2
-	if err := s.Validate(); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("threshold 2: want ErrInvalid, got %v", err)
+	if s.AnonymityThreshold != 3 {
+		t.Fatalf("default threshold: %d", s.AnonymityThreshold)
+	}
+	s.AnonymityThreshold = 1
+	if err := s.Validate(); err != nil {
+		t.Fatalf("threshold 1: %v", err)
+	}
+	for _, k := range []int{0, 51} {
+		s.AnonymityThreshold = k
+		if err := s.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("threshold %d: want ErrInvalid, got %v", k, err)
+		}
+	}
+}
+
+// With the threshold at 1 a day with a single answer shows its mood and comment, but a day
+// answered while it was higher keeps that one.
+func TestBuildReportThresholdOne(t *testing.T) {
+	settings := DefaultGuildSettings()
+	settings.AnonymityThreshold = 1
+	g := Guild{DiscordID: guildA, Settings: settings}
+	entries := []MoodEntry{
+		{MemberDiscordID: userA, Day: day("2026-10-20"), Mood: MoodGood, Message: "bien", AnonymityThreshold: 1},
+		{MemberDiscordID: userA, Day: day("2026-10-19"), Mood: MoodBad, Message: "antes", AnonymityThreshold: 3},
+	}
+	r := BuildReport(g, day("2026-10-19"), day("2026-10-20"), entries, nil)
+	if r.Withheld || r.Average != float64(MoodGood) || len(r.Messages) != 1 || r.Messages[0].Message != "bien" {
+		t.Fatalf("report: %+v", r)
+	}
+	if !r.Days[0].Withheld || r.Days[0].AnonymityThreshold != 3 || r.Days[1].Withheld || r.Days[1].AnonymityThreshold != 1 {
+		t.Fatalf("days: %+v", r.Days)
 	}
 }
 
