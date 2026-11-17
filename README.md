@@ -209,7 +209,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
-| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak`, `entries`, `anonymous` (whether today's answer is), `named_since` (once anonymity was turned off) and `anonymity_threshold` |
+| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak`, `entries`, `anonymous` (whether today's answer is), `named_since` (once anonymity was turned off) `anonymity_threshold`, `survey_days` (the days the survey went out in that server since the user joined it, `YYYY-MM-DD`) and `vacations` (the user's days off there that touch the period, past ones included, as `{from, to}`) |
 | GET | `/web/me/games` | `?from=&to=` (default: last 30 days). The user's own «Who's who?» score in every server where they play: `weeks` with `correct` and `guesses` for each finished round they guessed in |
 | GET | `/web/me/vacations` | `{own, set_by_admins}`: the user's own vacation (`{from, to}`, `null` if none) and the ones admins set for them (each with `discord_guild_id` and `guild_name`), that haven't ended. See «Vacations» |
 | PUT | `/web/me/vacation` | `from`, `to` (`YYYY-MM-DD`): sets the user's own vacation, for every server, replacing the one they had. Needs `Content-Type: application/json` |
@@ -253,7 +253,8 @@ drop. Those days don't break their streak, and they can still answer if they wan
 A person sets their own vacation on the web or with `/happyx vacation`; it applies in every
 server they are in. Someone with **manage** on a server can set one for a member there, in case
 they forgot; it applies in that server only, the bot tells the member by DM, and the member can
-remove it. Both kinds apply together. Vacations are kept 400 days after they end, the stretch over
+remove it. Both kinds apply together. Replacing or removing a vacation keeps the days of it that
+had already gone by, so they still don't break the streak and «My evolution» still shows them. Vacations are kept 400 days after they end, the stretch over
 which streaks are counted, and then deleted; erasing your data deletes them at once.
 
 

@@ -14,7 +14,8 @@ import (
 // --- Vacations ---
 
 // VacationRepo stores vacations. A person's own vacation has no guild and applies wherever they
-// are a member; one set by a server's admin is scoped to that guild like any tenant row.
+// are a member; one set by a server's admin is scoped to that guild like any tenant row. A
+// replaced or removed vacation stays, archived, for the days before keepFrom.
 type VacationRepo struct{ db *pgxpool.Pool }
 
 func NewVacationRepo(db *pgxpool.Pool) *VacationRepo { return &VacationRepo{db: db} }
@@ -30,52 +31,91 @@ func scanVacation(row pgx.Row, extra ...any) (domain.Vacation, error) {
 	return v, err
 }
 
-func (r *VacationRepo) Set(ctx context.Context, v domain.Vacation, notify bool) (domain.Vacation, error) {
-	var guild any // NULL for the person's own
-	if v.GuildDiscordID != "" {
-		var id int64
-		err := r.db.QueryRow(ctx, `SELECT id FROM guilds WHERE discord_id = $1`, v.GuildDiscordID).Scan(&id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Vacation{}, domain.ErrNotFound
-		}
-		if err != nil {
-			return domain.Vacation{}, err
-		}
-		guild = id
+// guildRef resolves the guild of a vacation's scope: NULL for the person's own.
+func guildRef(ctx context.Context, q pgx.Tx, guildID string) (any, error) {
+	if guildID == "" {
+		return nil, nil
 	}
 	var id int64
-	err := r.db.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `SELECT id FROM guilds WHERE discord_id = $1`, guildID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	return id, err
+}
+
+// retire takes the person's current vacation of the scope out of the way: the days before
+// keepFrom stay, archived, and the rest goes. It reports whether there was one.
+func retire(ctx context.Context, tx pgx.Tx, userID string, guild any, keepFrom time.Time) (bool, error) {
+	var id int64
+	var starts time.Time
+	err := tx.QueryRow(ctx, `
+		SELECT id, starts_on FROM vacations
+		WHERE user_discord_id = $1 AND guild_id IS NOT DISTINCT FROM $2 AND NOT archived
+		FOR UPDATE`, userID, guild).Scan(&id, &starts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if domain.TruncateDay(starts).Before(keepFrom) {
+		_, err = tx.Exec(ctx, `
+			UPDATE vacations SET archived = TRUE, notify_pending = FALSE, ends_on = LEAST(ends_on, $2::date - 1)
+			WHERE id = $1`, id, keepFrom)
+	} else {
+		_, err = tx.Exec(ctx, `DELETE FROM vacations WHERE id = $1`, id)
+	}
+	return true, err
+}
+
+func (r *VacationRepo) Set(ctx context.Context, v domain.Vacation, notify bool, keepFrom time.Time) (domain.Vacation, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return domain.Vacation{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
+	guild, err := guildRef(ctx, tx, v.GuildDiscordID)
+	if err != nil {
+		return domain.Vacation{}, err
+	}
+	if _, err := retire(ctx, tx, v.UserDiscordID, guild, domain.TruncateDay(keepFrom)); err != nil {
+		return domain.Vacation{}, err
+	}
+	var id int64
+	err = tx.QueryRow(ctx, `
 		INSERT INTO vacations (user_discord_id, guild_id, starts_on, ends_on, set_by_discord_id, notify_pending)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (user_discord_id, COALESCE(guild_id, 0)) DO UPDATE
-		SET starts_on = EXCLUDED.starts_on, ends_on = EXCLUDED.ends_on,
-		    set_by_discord_id = EXCLUDED.set_by_discord_id, notify_pending = EXCLUDED.notify_pending,
-		    created_at = now()
 		RETURNING id`,
 		v.UserDiscordID, guild, v.From, v.To, v.SetByDiscordID, notify).Scan(&id)
 	if err != nil {
 		return domain.Vacation{}, err
 	}
-	return scanVacation(r.db.QueryRow(ctx, `SELECT `+vacationCols+vacationFrom+`WHERE v.id = $1`, id))
+	saved, err := scanVacation(tx.QueryRow(ctx, `SELECT `+vacationCols+vacationFrom+`WHERE v.id = $1`, id))
+	if err != nil {
+		return domain.Vacation{}, err
+	}
+	return saved, tx.Commit(ctx)
 }
 
-func (r *VacationRepo) Delete(ctx context.Context, userID, guildID string) error {
-	var tag interface{ RowsAffected() int64 }
-	var err error
-	if guildID == "" {
-		tag, err = r.db.Exec(ctx, `DELETE FROM vacations WHERE user_discord_id = $1 AND guild_id IS NULL`, userID)
-	} else {
-		tag, err = r.db.Exec(ctx, `
-			DELETE FROM vacations WHERE user_discord_id = $1
-			AND guild_id = (SELECT id FROM guilds WHERE discord_id = $2)`, userID, guildID)
-	}
+func (r *VacationRepo) Delete(ctx context.Context, userID, guildID string, keepFrom time.Time) error {
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
+	guild, err := guildRef(ctx, tx, guildID)
+	if err != nil {
+		return err
+	}
+	found, err := retire(ctx, tx, userID, guild, domain.TruncateDay(keepFrom))
+	if err != nil {
+		return err
+	}
+	if !found {
 		return domain.ErrNotFound
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (r *VacationRepo) EndCovering(ctx context.Context, userID, guildID string, day, last time.Time) ([]domain.Vacation, error) {
@@ -85,7 +125,7 @@ func (r *VacationRepo) EndCovering(ctx context.Context, userID, guildID string, 
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // a no-op after Commit
 	rows, err := tx.Query(ctx, `SELECT `+vacationCols+vacationFrom+`
-		WHERE v.user_discord_id = $1
+		WHERE v.user_discord_id = $1 AND NOT v.archived
 		AND (v.guild_id IS NULL OR v.guild_id = (SELECT id FROM guilds WHERE discord_id = $2))
 		AND v.starts_on <= $3 AND v.ends_on >= $3
 		ORDER BY v.guild_id NULLS FIRST
@@ -110,8 +150,15 @@ func (r *VacationRepo) EndCovering(ctx context.Context, userID, guildID string, 
 
 func (r *VacationRepo) ForUser(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error) {
 	rows, err := r.db.Query(ctx, `SELECT `+vacationCols+vacationFrom+`
-		WHERE v.user_discord_id = $1 AND v.ends_on >= $2
+		WHERE v.user_discord_id = $1 AND v.ends_on >= $2 AND NOT v.archived
 		ORDER BY v.guild_id NULLS FIRST, vg.name, v.id`, userID, since)
+	return collect(rows, err, func(row pgx.Row) (domain.Vacation, error) { return scanVacation(row) })
+}
+
+func (r *VacationRepo) History(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error) {
+	rows, err := r.db.Query(ctx, `SELECT `+vacationCols+vacationFrom+`
+		WHERE v.user_discord_id = $1 AND v.ends_on >= $2
+		ORDER BY v.starts_on, v.id`, userID, since)
 	return collect(rows, err, func(row pgx.Row) (domain.Vacation, error) { return scanVacation(row) })
 }
 
@@ -120,7 +167,7 @@ func (r *VacationRepo) ForGuild(ctx context.Context, guildID string, since time.
 	rows, err := r.db.Query(ctx, `SELECT `+vacationCols+`, m.username`+vacationFrom+`
 		JOIN guilds g ON g.discord_id = $1
 		JOIN members m ON m.guild_id = g.id AND m.discord_id = v.user_discord_id AND m.in_server
-		WHERE (v.guild_id IS NULL OR v.guild_id = g.id) AND v.ends_on >= $2
+		WHERE (v.guild_id IS NULL OR v.guild_id = g.id) AND v.ends_on >= $2 AND NOT v.archived
 		ORDER BY v.starts_on, lower(m.username), v.guild_id NULLS FIRST`, guildID, since)
 	return collect(rows, err, func(row pgx.Row) (domain.Vacation, error) {
 		var name string
@@ -132,7 +179,7 @@ func (r *VacationRepo) ForGuild(ctx context.Context, guildID string, since time.
 
 func (r *VacationRepo) PendingNotices(ctx context.Context) ([]domain.Vacation, error) {
 	rows, err := r.db.Query(ctx, `SELECT `+vacationCols+vacationFrom+`
-		WHERE v.notify_pending AND vg.active ORDER BY v.id LIMIT 100`)
+		WHERE v.notify_pending AND NOT v.archived AND vg.active ORDER BY v.id LIMIT 100`)
 	return collect(rows, err, func(row pgx.Row) (domain.Vacation, error) { return scanVacation(row) })
 }
 

@@ -815,10 +815,10 @@ func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.
 	if err != nil {
 		return nil, err
 	}
-	// Vacations as far back as the streaks read, so their days don't break them.
+	// Vacations as far back as the streaks read, so their days don't break them, past ones too.
 	var vacs []domain.Vacation
 	if s.vacations != nil {
-		if vacs, err = s.vacations.ForUser(ctx, v.DiscordID, readFrom); err != nil {
+		if vacs, err = s.vacations.History(ctx, v.DiscordID, readFrom); err != nil {
 			return nil, err
 		}
 	}
@@ -843,9 +843,18 @@ func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.
 			}
 		}
 		ev := domain.BuildEvolution(g, byGuild[id], off, from, to, s.today(g))
-		if ev.Responses > 0 || ev.Streak > 0 {
-			out = append(out, ev)
+		if ev.Responses == 0 && ev.Streak == 0 {
+			continue
 		}
+		if ev.SurveyDays, err = s.surveyDaysFor(ctx, id, v.DiscordID, from, to); err != nil {
+			return nil, err
+		}
+		for _, vac := range off {
+			if !vac.To.Before(from) && !vac.From.After(to) {
+				ev.Vacations = append(ev.Vacations, vac)
+			}
+		}
+		out = append(out, ev)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if a, b := strings.ToLower(out[i].Guild.Name), strings.ToLower(out[j].Guild.Name); a != b {
@@ -854,6 +863,32 @@ func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.
 		return out[i].Guild.DiscordID < out[j].Guild.DiscordID
 	})
 	return out, nil
+}
+
+// surveyDaysFor returns the days in [from, to] the guild's survey went out to someone, from the
+// day the person joined the guild: before, there was no survey for them to answer.
+func (s *Service) surveyDaysFor(ctx context.Context, guildID, userID string, from, to time.Time) ([]time.Time, error) {
+	if m, err := s.members.Get(ctx, guildID, userID); err == nil && !m.CreatedAt.IsZero() {
+		if joined := domain.TruncateDay(m.CreatedAt); joined.After(from) {
+			from = joined
+		}
+	} else if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, err
+	}
+	if to.Before(from) {
+		return []time.Time{}, nil
+	}
+	sent, err := s.dispatches.ListFinished(ctx, guildID, domain.DispatchSurvey, from, to)
+	if err != nil {
+		return nil, err
+	}
+	days := []time.Time{}
+	for _, d := range sent {
+		if d.Recipients > 0 {
+			days = append(days, domain.TruncateDay(d.Day))
+		}
+	}
+	return days, nil
 }
 
 // ViewerGuild returns the guild if the viewer has at least the need level in it. Guilds they

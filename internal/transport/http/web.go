@@ -557,6 +557,15 @@ type evolutionDTO struct {
 	Average            float64     `json:"average"`
 	Streak             int         `json:"streak"`
 	Entries            []myMoodDTO `json:"entries"`
+	// SurveyDays are the days the survey went out in the server since the person joined it;
+	// Vacations, the person's days off there that touch the period, past ones included.
+	SurveyDays []string           `json:"survey_days"`
+	Vacations  []vacationRangeDTO `json:"vacations"`
+}
+
+type vacationRangeDTO struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 type myMoodDTO struct {
@@ -611,6 +620,14 @@ func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Vie
 		}
 		for _, e := range ev.Entries {
 			d.Entries = append(d.Entries, myMoodDTO{Day: e.Day.Format(dateLayout), Mood: int(e.Mood), Message: e.Message})
+		}
+		d.SurveyDays = make([]string, 0, len(ev.SurveyDays))
+		for _, day := range ev.SurveyDays {
+			d.SurveyDays = append(d.SurveyDays, day.Format(dateLayout))
+		}
+		d.Vacations = make([]vacationRangeDTO, 0, len(ev.Vacations))
+		for _, vac := range ev.Vacations {
+			d.Vacations = append(d.Vacations, vacationRangeDTO{From: vac.From.Format(dateLayout), To: vac.To.Format(dateLayout)})
 		}
 		out.Guilds = append(out.Guilds, d)
 	}
