@@ -18,6 +18,13 @@ type Evolution struct {
 	// ThresholdToday is the anonymity threshold today's answer is given under (see
 	// GuildSettings.ThresholdOn).
 	ThresholdToday int
+	// SurveyDays are the days of the period the survey went out in the guild since the person
+	// joined it, oldest first: a day among them without an answer is one they didn't answer,
+	// unless their vacation covers it.
+	SurveyDays []time.Time
+	// Vacations are the person's days off that touch the period and apply in the guild: their
+	// own and the ones set there, past ones included.
+	Vacations Vacations
 }
 
 // BuildEvolution summarises entries (the person's answers in g, oldest first, which may

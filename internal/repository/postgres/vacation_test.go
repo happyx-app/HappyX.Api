@@ -170,7 +170,7 @@ func TestVacationKeepsStreak(t *testing.T) {
 		t.Fatalf("without vacation: %d %d", db, page)
 	}
 	// Set a vacation that already ended straight in the table: the API refuses to set those.
-	if _, err := NewVacationRepo(pgPool(t)).Set(ctx, domain.Vacation{UserDiscordID: user1, From: day("2026-10-28"), To: day("2026-11-04"), SetByDiscordID: user1}, false); err != nil {
+	if _, err := NewVacationRepo(pgPool(t)).Set(ctx, domain.Vacation{UserDiscordID: user1, From: day("2026-10-28"), To: day("2026-11-04"), SetByDiscordID: user1}, false, day("2026-11-05")); err != nil {
 		t.Fatal(err)
 	}
 	if db, page := streak(); db != 4 || page != 4 {
@@ -296,4 +296,88 @@ func TestResumeEndsVacations(t *testing.T) {
 	if vs := mine(); len(vs) != 2 || !vs[0].From.Equal(day("2026-11-09")) || !vs[0].To.Equal(day("2026-11-09")) {
 		t.Fatalf("one starting today, resumed in the evening, keeps today: %+v", vs)
 	}
+}
+
+// «My evolution» gets the days the survey went out since the person joined, and their days off,
+// replaced ones included, while the vacations page only shows the current ones.
+func TestEvolutionSurveyDaysAndVacationHistory(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC) // a Friday
+	clock := &testClock{now: now}
+	svc := testServiceClock(t, clock.Now)
+	mustRegister(t, svc, guildA)
+	mustJoin(t, svc, guildA, user1)
+	pool := pgPool(t)
+	// They joined on 1 October: the survey of 30 September wasn't theirs.
+	if _, err := pool.Exec(ctx, `UPDATE members SET created_at = '2026-10-01 09:00+00' WHERE discord_id = $1`, user1); err != nil {
+		t.Fatal(err)
+	}
+	dispatches := NewDispatchRepo(pool)
+	for d, n := range map[string]int{"2026-09-30": 3, "2026-11-02": 3, "2026-11-03": 3, "2026-11-04": 0, "2026-11-05": 3} {
+		if _, err := dispatches.Claim(ctx, guildA, domain.DispatchSurvey, day(d), 3); err != nil {
+			t.Fatal(err)
+		}
+		if err := dispatches.Finish(ctx, guildA, domain.DispatchSurvey, day(d), n, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A survey claimed but never finished didn't reach anyone yet.
+	if _, err := dispatches.Claim(ctx, guildA, domain.DispatchSurvey, day("2026-11-06"), 3); err != nil {
+		t.Fatal(err)
+	}
+	answerOn(t, svc, clock, guildA, user1, day("2026-11-05"), domain.MoodGood)
+
+	// A vacation that started before the API's today, replaced by a later one: its days gone stay.
+	vacations := NewVacationRepo(pool)
+	if _, err := vacations.Set(ctx, domain.Vacation{UserDiscordID: user1, From: day("2026-11-02"), To: day("2026-11-08"), SetByDiscordID: user1}, false, day("2026-11-01")); err != nil {
+		t.Fatal(err)
+	}
+	me := domain.Viewer{DiscordID: user1}
+	if _, err := svc.SetMyVacation(ctx, me, day("2026-11-12"), day("2026-11-13")); err != nil {
+		t.Fatal(err)
+	}
+	if vs, err := svc.MyVacations(ctx, me); err != nil || len(vs) != 1 || !vs[0].From.Equal(day("2026-11-12")) {
+		t.Fatalf("current vacations: %+v %v", vs, err)
+	}
+
+	evs, err := svc.Evolution(ctx, me, day("2026-09-28"), day("2026-11-06"))
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("evolution: %+v %v", evs, err)
+	}
+	var got []string
+	for _, d := range evs[0].SurveyDays {
+		got = append(got, d.Format("2006-01-02"))
+	}
+	if want := []string{"2026-11-02", "2026-11-03", "2026-11-05"}; !equalStrings(got, want) {
+		t.Fatalf("survey days: %v, want %v", got, want)
+	}
+	if vs := evs[0].Vacations; len(vs) != 1 || !vs[0].From.Equal(day("2026-11-02")) || !vs[0].To.Equal(day("2026-11-04")) {
+		t.Fatalf("vacations: %+v", vs)
+	}
+
+	// Removing the current one keeps the history too, and it can't be removed twice.
+	if err := svc.DeleteMyVacation(ctx, me, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteMyVacation(ctx, me, ""); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("second delete: %v", err)
+	}
+	if vs, _ := svc.MyVacations(ctx, me); len(vs) != 0 {
+		t.Fatalf("deleted vacation still listed: %+v", vs)
+	}
+	if evs, _ := svc.Evolution(ctx, me, day("2026-09-28"), day("2026-11-06")); len(evs) != 1 || len(evs[0].Vacations) != 1 {
+		t.Fatalf("history lost: %+v", evs)
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

@@ -82,7 +82,7 @@ func (s *Service) DeleteMyVacation(ctx context.Context, v domain.Viewer, guildID
 	if s.vacations == nil {
 		return errNoVacations
 	}
-	return s.vacations.Delete(ctx, v.DiscordID, guildID)
+	return s.vacations.Delete(ctx, v.DiscordID, guildID, s.utcYesterday())
 }
 
 func (s *Service) setOwnVacation(ctx context.Context, userID string, from, to, today time.Time) (domain.Vacation, error) {
@@ -93,7 +93,7 @@ func (s *Service) setOwnVacation(ctx context.Context, userID string, from, to, t
 	if err := vac.Validate(today); err != nil {
 		return domain.Vacation{}, err
 	}
-	return s.vacations.Set(ctx, vac, false)
+	return s.vacations.Set(ctx, vac, false, today)
 }
 
 // --- From the bot ---
@@ -224,7 +224,7 @@ func (s *Service) SetGuildVacation(ctx context.Context, v domain.Viewer, guildID
 	if err := vac.Validate(s.today(g)); err != nil {
 		return domain.Vacation{}, err
 	}
-	saved, err := s.vacations.Set(ctx, vac, vac.SetByAdmin())
+	saved, err := s.vacations.Set(ctx, vac, vac.SetByAdmin(), s.today(g))
 	saved.Username = m.Username
 	return saved, err
 }
@@ -232,11 +232,12 @@ func (s *Service) SetGuildVacation(ctx context.Context, v domain.Viewer, guildID
 // DeleteGuildVacation removes the vacation set for the member in this guild. A member's own
 // vacation is theirs: admins can't remove it.
 func (s *Service) DeleteGuildVacation(ctx context.Context, v domain.Viewer, guildID, userID string) error {
-	if _, err := s.ViewerGuild(ctx, v, guildID, domain.AccessManage); err != nil {
+	g, err := s.ViewerGuild(ctx, v, guildID, domain.AccessManage)
+	if err != nil {
 		return err
 	}
 	if s.vacations == nil {
 		return errNoVacations
 	}
-	return s.vacations.Delete(ctx, userID, guildID)
+	return s.vacations.Delete(ctx, userID, guildID, s.today(g))
 }

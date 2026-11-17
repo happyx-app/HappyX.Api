@@ -179,12 +179,12 @@ type CanvasRepository interface {
 
 type VacationRepository interface {
 	// Set stores v, replacing the person's vacation of the same kind: their own when
-	// v.GuildDiscordID is "", otherwise the one set in that guild. notify marks it for the bot to
-	// tell the person by DM.
-	Set(ctx context.Context, v domain.Vacation, notify bool) (domain.Vacation, error)
-	// Delete removes the person's own vacation (guildID "") or the one set in guildID.
-	// domain.ErrNotFound when there is none.
-	Delete(ctx context.Context, userID, guildID string) error
+	// v.GuildDiscordID is "", otherwise the one set in that guild. The replaced one's days before
+	// keepFrom stay as history (see History). notify marks v for the bot to tell the person by DM.
+	Set(ctx context.Context, v domain.Vacation, notify bool, keepFrom time.Time) (domain.Vacation, error)
+	// Delete removes the person's own vacation (guildID "") or the one set in guildID, keeping
+	// its days before keepFrom as history. domain.ErrNotFound when there is none.
+	Delete(ctx context.Context, userID, guildID string, keepFrom time.Time) error
 	// EndCovering ends the vacations that apply to the person in guildID, their own and the one
 	// set there, that cover day: they now end on last, and one starting after last is removed.
 	// Later ones stay. It returns them as they were.
@@ -192,6 +192,9 @@ type VacationRepository interface {
 	// ForUser returns the person's vacations that end on since or later: their own and the ones
 	// set in any guild, own first.
 	ForUser(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error)
+	// History returns every day off the person had that ends on since or later: their current
+	// vacations and the past days of replaced or removed ones, by start date.
+	History(ctx context.Context, userID string, since time.Time) ([]domain.Vacation, error)
 	// ForGuild returns the vacations that apply to the guild's members still in the server, their
 	// own and the ones set in this guild, that end on since or later, with the members' usernames,
 	// by start date.
