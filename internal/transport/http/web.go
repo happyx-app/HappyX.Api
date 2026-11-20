@@ -78,6 +78,10 @@ func (s *Server) webRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /web/guilds/{guildID}/vacations/{userID}", s.requireViewer(s.webSetGuildVacation))
 	mux.Handle("DELETE /web/guilds/{guildID}/vacations/{userID}", s.requireViewer(s.webDeleteGuildVacation))
 	mux.Handle("GET /web/guilds/{guildID}/report", s.requireViewer(s.webReport))
+	mux.Handle("GET /web/guilds/{guildID}/events", s.requireViewer(s.webTeamEvents))
+	mux.Handle("POST /web/guilds/{guildID}/events", s.requireViewer(s.webCreateTeamEvent))
+	mux.Handle("PUT /web/guilds/{guildID}/events/{eventID}", s.requireViewer(s.webUpdateTeamEvent))
+	mux.Handle("DELETE /web/guilds/{guildID}/events/{eventID}", s.requireViewer(s.webDeleteTeamEvent))
 	mux.Handle("GET /web/guilds/{guildID}/health", s.requireViewer(s.webHealth))
 	mux.Handle("PATCH /web/guilds/{guildID}/settings", s.requireViewer(s.webUpdateSettings))
 	mux.Handle("GET /web/guilds/{guildID}/roles", s.requireViewer(s.webRoles))
@@ -561,6 +565,8 @@ type evolutionDTO struct {
 	// Vacations, the person's days off there that touch the period, past ones included.
 	SurveyDays []string           `json:"survey_days"`
 	Vacations  []vacationRangeDTO `json:"vacations"`
+	// Events are the server's team events that touch the period.
+	Events []teamEventDTO `json:"events"`
 }
 
 type vacationRangeDTO struct {
@@ -629,6 +635,7 @@ func (s *Server) webMyMoods(w http.ResponseWriter, r *http.Request, v domain.Vie
 		for _, vac := range ev.Vacations {
 			d.Vacations = append(d.Vacations, vacationRangeDTO{From: vac.From.Format(dateLayout), To: vac.To.Format(dateLayout)})
 		}
+		d.Events = toTeamEventDTOs(ev.Events)
 		out.Guilds = append(out.Guilds, d)
 	}
 	writeJSON(w, http.StatusOK, out)

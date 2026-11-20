@@ -23,7 +23,7 @@ func (s *Store) Repositories() (usecase.GuildRepository, usecase.MemberRepositor
 // NewService is a usecase.Service that only knows the demo server.
 func (s *Store) NewService() *usecase.Service {
 	g, m, mo, d, k, ga, a, p := s.Repositories()
-	return usecase.NewService(g, m, mo, d, k, ga, a, p, s.now).WithCanvas(canvas{s}).WithGameDay(GameDay)
+	return usecase.NewService(g, m, mo, d, k, ga, a, p, s.now).WithCanvas(canvas{s}).WithTeamEvents(events{s}).WithGameDay(GameDay)
 }
 
 // GameDay is the day the demo's «Who's who?» is on. Monday to Wednesday it is that week's
@@ -381,3 +381,36 @@ func (privacy) EraseUser(context.Context, string) error { return ErrReadOnly }
 func (privacy) GuildData(context.Context, string) (domain.GuildData, error) {
 	return domain.GuildData{}, domain.ErrNotFound
 }
+
+// events are the demo's two marked events; marking more is read-only like every other write.
+type events struct{ s *Store }
+
+func (r events) ForGuild(_ context.Context, guildID string, from, to time.Time) ([]domain.TeamEvent, error) {
+	out := []domain.TeamEvent{}
+	if guildID != GuildID {
+		return out, nil
+	}
+	for _, e := range r.s.current().events {
+		if !e.To.Before(from) && !e.From.After(to) {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (r events) Count(_ context.Context, guildID string) (int, error) {
+	if guildID != GuildID {
+		return 0, nil
+	}
+	return len(r.s.current().events), nil
+}
+
+func (events) Create(context.Context, domain.TeamEvent) (domain.TeamEvent, error) {
+	return domain.TeamEvent{}, ErrReadOnly
+}
+
+func (events) Update(context.Context, domain.TeamEvent) (domain.TeamEvent, error) {
+	return domain.TeamEvent{}, ErrReadOnly
+}
+
+func (events) Delete(context.Context, string, int64) error { return ErrReadOnly }

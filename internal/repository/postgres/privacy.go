@@ -254,6 +254,14 @@ func (r *PrivacyRepo) GuildData(ctx context.Context, guildID string) (domain.Gui
 	rows, qerr = r.db.Query(ctx, `SELECT `+teamNoteCols+teamNoteFrom+`
 		WHERE g.discord_id = $1
 		ORDER BY n.created_at, n.id`, guildID)
-	d.TeamNotes, err = collect(rows, qerr, scanTeamNote)
+	if d.TeamNotes, err = collect(rows, qerr, scanTeamNote); err != nil {
+		return d, err
+	}
+	rows, qerr = r.db.Query(ctx, `
+		SELECT e.id, g.discord_id, e.starts_on, e.ends_on, e.title, e.description, e.color
+		FROM team_events e JOIN guilds g ON g.id = e.guild_id
+		WHERE g.discord_id = $1
+		ORDER BY e.starts_on, e.ends_on, e.id`, guildID)
+	d.TeamEvents, err = collect(rows, qerr, scanTeamEvent)
 	return d, err
 }

@@ -36,6 +36,7 @@ func (s *Server) demoRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /web/demo/{lang}/me/games", s.asDemoViewer((*Server).webMyGames))
 	mux.Handle("GET /web/demo/{lang}/me/vacations", s.asDemoViewer((*Server).webMyVacations))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/report", s.asDemoViewer((*Server).webReport))
+	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/events", s.asDemoViewer((*Server).webTeamEvents))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/health", s.asDemoViewer((*Server).webHealth))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/roles", s.asDemoViewer((*Server).webRoles))
 	mux.Handle("GET /web/demo/{lang}/guilds/{guildID}/channels", s.asDemoViewer((*Server).webChannels))

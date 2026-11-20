@@ -67,6 +67,8 @@ type GuildData struct {
 	// TeamNotes are what the admins told the team after reports, oldest first. They were
 	// published in a channel, so they leave with their authors.
 	TeamNotes []TeamNote
+	// TeamEvents are the events marked on the chart, by start date.
+	TeamEvents []TeamEvent
 }
 
 // GuildExport is a guild's data as its managers may download it.
@@ -85,6 +87,7 @@ type GuildExport struct {
 	// CanvasStrokes are the team canvas' strokes with their authors, as moderators see them.
 	CanvasStrokes []CanvasStroke
 	TeamNotes     []TeamNote
+	TeamEvents    []TeamEvent
 }
 
 // ExportedMood is a survey answer that names its author in a guild export.
@@ -128,7 +131,7 @@ type ExportedAnswer struct {
 //
 // today is the current date in the guild's timezone.
 func BuildGuildExport(d GuildData, today time.Time) GuildExport {
-	out := GuildExport{Guild: d.Guild, Members: d.Members, Kudos: d.Kudos, Moods: []ExportedMood{}, AnonymousDays: []ExportedDay{}, AnonymousComments: []string{}, Rounds: []ExportedRound{}, CanvasStrokes: d.CanvasStrokes, TeamNotes: d.TeamNotes}
+	out := GuildExport{Guild: d.Guild, Members: d.Members, Kudos: d.Kudos, Moods: []ExportedMood{}, AnonymousDays: []ExportedDay{}, AnonymousComments: []string{}, Rounds: []ExportedRound{}, CanvasStrokes: d.CanvasStrokes, TeamNotes: d.TeamNotes, TeamEvents: d.TeamEvents}
 
 	named := map[string]string{}
 	if !d.Guild.Settings.Anonymous {

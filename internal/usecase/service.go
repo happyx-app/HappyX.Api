@@ -24,6 +24,7 @@ type Service struct {
 	vacations  VacationRepository    // nil until WithVacations: nobody is ever on vacation
 	teamNotes  TeamNoteRepository    // nil until WithTeamNotes
 	posts      ChannelPostRepository // nil until WithChannelPosts
+	events     TeamEventRepository   // nil until WithTeamEvents: no server has events
 	now        Clock
 	gameDay    func(today time.Time) time.Time // nil until WithGameDay
 }
@@ -852,6 +853,12 @@ func (s *Service) Evolution(ctx context.Context, v domain.Viewer, from, to time.
 		for _, vac := range off {
 			if !vac.To.Before(from) && !vac.From.After(to) {
 				ev.Vacations = append(ev.Vacations, vac)
+			}
+		}
+		// The server's events are for every member, so they show on each person's own chart too.
+		if s.events != nil {
+			if ev.Events, err = s.events.ForGuild(ctx, id, from, to); err != nil {
+				return nil, err
 			}
 		}
 		out = append(out, ev)

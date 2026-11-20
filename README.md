@@ -209,7 +209,7 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/auth/callback` | Discord redirects here; sets the session and goes back to `WEB_URL` |
 | POST | `/web/auth/logout` | 204 |
 | GET | `/web/me` | `{user, guilds, games}`: the logged-in user, the servers they can see (each with its `access` level), and the servers where they can play (`discord_guild_id`, `name`) |
-| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak`, `entries`, `anonymous` (whether today's answer is), `named_since` (once anonymity was turned off) `anonymity_threshold`, `survey_days` (the days the survey went out in that server since the user joined it, `YYYY-MM-DD`) and `vacations` (the user's days off there that touch the period, past ones included, as `{from, to}`) |
+| GET | `/web/me/moods` | `?from=&to=` (default: last 30 days). The user's own answers in every server, one entry per server with `responses`, `average`, `streak`, `entries`, `anonymous` (whether today's answer is), `named_since` (once anonymity was turned off) `anonymity_threshold`, `survey_days` (the days the survey went out in that server since the user joined it, `YYYY-MM-DD`) `vacations` (the user's days off there that touch the period, past ones included, as `{from, to}`) and `events` (the server's team events that touch the period, as in `/web/guilds/{guildID}/events`) |
 | GET | `/web/me/games` | `?from=&to=` (default: last 30 days). The user's own «Who's who?» score in every server where they play: `weeks` with `correct` and `guesses` for each finished round they guessed in |
 | GET | `/web/me/vacations` | `{own, set_by_admins}`: the user's own vacation (`{from, to}`, `null` if none) and the ones admins set for them (each with `discord_guild_id` and `guild_name`), that haven't ended. See «Vacations» |
 | PUT | `/web/me/vacation` | `from`, `to` (`YYYY-MM-DD`): sets the user's own vacation, for every server, replacing the one they had. Needs `Content-Type: application/json` |
@@ -232,9 +232,13 @@ setting. Servers a user can't see answer 404, like servers without HappyX.
 | GET | `/web/guilds/{guildID}/vacations` | `{vacations, members}`: the vacations of members still in the server that haven't ended (`discord_user_id`, `username`, `from`, `to`, `set_here`: `false` for the member's own, which admins can't change), by start date, and the `members` who can be given one (`discord_user_id`, `username`). Needs **manage** |
 | PUT | `/web/guilds/{guildID}/vacations/{userID}` | `from`, `to`: sets the member's vacation in this server, replacing the one set here before; the bot tells them by DM. Needs **manage** and `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}/vacations/{userID}` | removes the vacation set for the member in this server. Needs **manage** and `Content-Type: application/json`. 204; 404 if none |
+| GET | `/web/guilds/{guildID}/events` | `?from=&to=` (default: last 30 days). `{events}`: the server's team events that touch the period, by start date, each `{id, from, to, title, description, color}` (`description` left out when empty). Needs **view** |
+| POST | `/web/guilds/{guildID}/events` | `from`, `to`, `title` (1–60 characters), `description` (optional, up to 280), `color` (optional: `yellow` by default, `orange`, `red`, `green`, `blue` or `pink`): marks an event on the chart. It can't end after today in the server's timezone; a server keeps up to 1000. Needs **manage** and `Content-Type: application/json`. 201 with the event |
+| PUT | `/web/guilds/{guildID}/events/{eventID}` | same body: changes the event. Needs **manage** and `Content-Type: application/json`. 404 if it isn't this server's |
+| DELETE | `/web/guilds/{guildID}/events/{eventID}` | removes the event. Needs **manage** and `Content-Type: application/json`. 204; 404 if it isn't this server's |
 | PUT | `/web/guilds/{guildID}/access` | `admin_discord_user_id` and the full `grants` list (at most 50). The admin and granted users must be in the server, roles must exist. Needs **owner** and `Content-Type: application/json` |
 | DELETE | `/web/guilds/{guildID}` | `confirm_name` (the server's name): deletes the server and all its data (members, moods, kudos, game, canvas, dispatches); the bot then leaves it. Needs **owner** and `Content-Type: application/json`. 204 |
-| GET | `/web/guilds/{guildID}/export` | downloads the server's data as JSON (`happyx-server-data`): settings, members, survey answers, kudos, «Who's who?» rounds, the team canvas with who drew each stroke, and what admins told the team after reports (`team_notes`). Needs **owner**, and the same anonymity as the dashboard (see below) |
+| GET | `/web/guilds/{guildID}/export` | downloads the server's data as JSON (`happyx-server-data`): settings, members, survey answers, kudos, «Who's who?» rounds, the team canvas with who drew each stroke, and what admins told the team after reports (`team_notes`), and the events marked on the chart (`team_events`). Needs **owner**, and the same anonymity as the dashboard (see below) |
 | GET | `/web/me/data` | downloads everything HappyX keeps about the logged-in user as JSON (`happyx-personal-data`): per server their membership, answers, kudos given and received, game answers, guesses and proposals, drawings on the team canvas, what they told the team after reports (`team_notes`), and which servers' reports they receive; and their `vacations` |
 | DELETE | `/web/me/data` | `confirm_name` (the user's username): erases the user's answers, kudos (given and received), game activity, drawings and vacations in every server, and pauses the survey for them everywhere. Their member rows stay, without a username, so the bot doesn't sign them up again. Needs `Content-Type: application/json`. 204 |
 
@@ -283,6 +287,7 @@ as the demo's main admin:
 | GET | `/web/demo/{lang}/me/moods` |
 | GET | `/web/demo/{lang}/me/games` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/report` |
+| GET | `/web/demo/{lang}/guilds/{guildID}/events` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/health` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/roles` |
 | GET | `/web/demo/{lang}/guilds/{guildID}/channels` |

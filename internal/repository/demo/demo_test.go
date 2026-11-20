@@ -151,3 +151,24 @@ func TestDemoIsReadOnly(t *testing.T) {
 		t.Fatal("the demo stopped being anonymous")
 	}
 }
+
+// The demo marks a hard stretch and a good day in the last 90 days; marking more is read-only.
+func TestDemoTeamEvents(t *testing.T) {
+	ctx := context.Background()
+	svc := demo.NewStore("es", at("2026-10-31T10:00:00Z")).NewService()
+	es, err := svc.TeamEvents(ctx, demo.Viewer(), demo.GuildID, day("2026-08-02"), day("2026-10-31"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(es) != 2 || es[0].Title == "" || es[0].From.After(es[1].From) {
+		t.Fatalf("events: %+v", es)
+	}
+	for _, e := range es {
+		if e.Validate(day("2026-10-31")) != nil {
+			t.Errorf("invalid demo event: %+v", e)
+		}
+	}
+	if _, err := svc.CreateTeamEvent(ctx, demo.Viewer(), demo.GuildID, domain.TeamEvent{Title: "x", From: day("2026-10-30"), To: day("2026-10-30")}); err == nil {
+		t.Fatal("the demo took a new event")
+	}
+}
