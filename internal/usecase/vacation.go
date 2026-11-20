@@ -225,7 +225,7 @@ func (s *Service) SetGuildVacation(ctx context.Context, v domain.Viewer, guildID
 		return domain.Vacation{}, err
 	}
 	saved, err := s.vacations.Set(ctx, vac, vac.SetByAdmin(), s.today(g))
-	saved.Username = m.Username
+	saved.Username, saved.DisplayName = m.Username, m.DisplayName
 	return saved, err
 }
 

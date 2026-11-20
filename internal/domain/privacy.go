@@ -41,6 +41,7 @@ type RoundAnswer struct {
 	Text            string
 	MemberDiscordID string
 	Username        string
+	DisplayName     string
 }
 
 // MadeGuess is who someone bet wrote an answer.
@@ -49,6 +50,8 @@ type MadeGuess struct {
 	Question        string
 	Answer          string
 	GuessedUsername string
+	// GuessedDisplayName is the name the server shows for them.
+	GuessedDisplayName string
 }
 
 // GuildData is everything HappyX keeps about a guild, as stored. BuildGuildExport decides what of
@@ -92,10 +95,11 @@ type GuildExport struct {
 
 // ExportedMood is a survey answer that names its author in a guild export.
 type ExportedMood struct {
-	Day      time.Time
-	Mood     Mood
-	Message  string
-	Username string
+	Day         time.Time
+	Mood        Mood
+	Message     string
+	Username    string
+	DisplayName string
 }
 
 // ExportedDay is a day's anonymous answers in a guild export. Average is 0 when Withheld.
@@ -110,15 +114,19 @@ type ExportedDay struct {
 type ExportedRound struct {
 	Week     time.Time
 	Question string
-	// ProposedBy names the member who proposed the question, once the round is finished.
-	ProposedBy string
-	Answers    []ExportedAnswer
+	// ProposedBy and ProposedByDisplayName name the member who proposed the question, once the
+	// round is finished.
+	ProposedBy            string
+	ProposedByDisplayName string
+	Answers               []ExportedAnswer
 }
 
-// ExportedAnswer is an answer in a guild export. Username is empty until the round is finished.
+// ExportedAnswer is an answer in a guild export. Its author's names are empty until the round is
+// finished.
 type ExportedAnswer struct {
-	Text     string
-	Username string
+	Text        string
+	Username    string
+	DisplayName string
 }
 
 // BuildGuildExport applies the dashboard's rules to the guild's data:
@@ -133,11 +141,11 @@ type ExportedAnswer struct {
 func BuildGuildExport(d GuildData, today time.Time) GuildExport {
 	out := GuildExport{Guild: d.Guild, Members: d.Members, Kudos: d.Kudos, Moods: []ExportedMood{}, AnonymousDays: []ExportedDay{}, AnonymousComments: []string{}, Rounds: []ExportedRound{}, CanvasStrokes: d.CanvasStrokes, TeamNotes: d.TeamNotes, TeamEvents: d.TeamEvents}
 
-	named := map[string]string{}
+	named := map[string]Member{}
 	if !d.Guild.Settings.Anonymous {
 		for _, m := range d.Members {
-			if m.Active {
-				named[m.DiscordID] = m.Username
+			if m.Active && m.Username != "" {
+				named[m.DiscordID] = m
 			}
 		}
 	}
@@ -149,8 +157,8 @@ func BuildGuildExport(d GuildData, today time.Time) GuildExport {
 	}
 	days := map[time.Time]*day{}
 	for _, e := range d.Moods {
-		if name := named[e.MemberDiscordID]; name != "" && !e.Anonymous {
-			out.Moods = append(out.Moods, ExportedMood{Day: e.Day, Mood: e.Mood, Message: e.Message, Username: name})
+		if m, ok := named[e.MemberDiscordID]; ok && !e.Anonymous {
+			out.Moods = append(out.Moods, ExportedMood{Day: e.Day, Mood: e.Mood, Message: e.Message, Username: m.Username, DisplayName: m.DisplayName})
 			continue
 		}
 		dd := days[TruncateDay(e.Day)]
@@ -193,13 +201,13 @@ func BuildGuildExport(d GuildData, today time.Time) GuildExport {
 		phase := r.Phase(today)
 		er := ExportedRound{Week: r.Week, Question: r.Question, Answers: []ExportedAnswer{}}
 		if phase == GameFinished && r.Proposed {
-			er.ProposedBy = r.ProposerUsername
+			er.ProposedBy, er.ProposedByDisplayName = r.ProposerUsername, r.ProposerDisplayName
 		}
 		if phase != GameAnswering {
 			for _, a := range byWeek[r.Week] {
 				ea := ExportedAnswer{Text: a.Text}
 				if phase == GameFinished {
-					ea.Username = a.Username
+					ea.Username, ea.DisplayName = a.Username, a.DisplayName
 				}
 				er.Answers = append(er.Answers, ea)
 			}

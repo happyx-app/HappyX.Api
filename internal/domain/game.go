@@ -37,10 +37,11 @@ type GameRound struct {
 	Question       string
 	// Proposer is who proposed the question, when it was drawn from the members' proposals
 	// rather than the bot's list. Empty if they left the guild since.
-	ProposerDiscordID string
-	ProposerUsername  string
-	Proposed          bool
-	CreatedAt         time.Time
+	ProposerDiscordID   string
+	ProposerUsername    string
+	ProposerDisplayName string
+	Proposed            bool
+	CreatedAt           time.Time
 }
 
 func (r GameRound) Validate() error {
@@ -94,6 +95,7 @@ type GameAnswer struct {
 	Week            time.Time
 	MemberDiscordID string
 	Username        string
+	DisplayName     string
 	Text            string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -116,6 +118,7 @@ type GameProposal struct {
 	Week            time.Time // the Monday of the round it is for
 	MemberDiscordID string
 	Username        string
+	DisplayName     string
 	Text            string
 }
 
@@ -138,15 +141,17 @@ type GameGuess struct {
 
 // GameScore is one guesser's result in a finished round.
 type GameScore struct {
-	DiscordID string
-	Username  string
-	Correct   int
-	Guesses   int
+	DiscordID   string
+	Username    string
+	DisplayName string
+	Correct     int
+	Guesses     int
 }
 
 // Ranking scores everyone who guessed, best first: most right, then fewest guesses, then name.
 // Guesses on answers that are no longer in the round (their author paused HappyX) don't count.
-func Ranking(answers []GameAnswer, guesses []GameGuess, usernames map[string]string) []GameScore {
+// members maps Discord IDs to the members, for the guessers' names.
+func Ranking(answers []GameAnswer, guesses []GameGuess, members map[string]Member) []GameScore {
 	author := map[string]string{}
 	for _, a := range answers {
 		author[a.ID] = a.MemberDiscordID
@@ -159,7 +164,8 @@ func Ranking(answers []GameAnswer, guesses []GameGuess, usernames map[string]str
 		}
 		s := scores[g.GuesserDiscordID]
 		if s == nil {
-			s = &GameScore{DiscordID: g.GuesserDiscordID, Username: usernames[g.GuesserDiscordID]}
+			who := members[g.GuesserDiscordID]
+			s = &GameScore{DiscordID: g.GuesserDiscordID, Username: who.Username, DisplayName: who.DisplayName}
 			scores[g.GuesserDiscordID] = s
 		}
 		s.Guesses++
@@ -179,7 +185,7 @@ func Ranking(answers []GameAnswer, guesses []GameGuess, usernames map[string]str
 		if a.Guesses != b.Guesses {
 			return a.Guesses < b.Guesses
 		}
-		if x, y := strings.ToLower(a.Username), strings.ToLower(b.Username); x != y {
+		if x, y := strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName); x != y {
 			return x < y
 		}
 		return a.DiscordID < b.DiscordID

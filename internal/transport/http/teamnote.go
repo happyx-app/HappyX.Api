@@ -10,21 +10,23 @@ import (
 
 // teamNoteDTO is what an admin told the team after a report, and where the bot published it.
 type teamNoteDTO struct {
-	ID              int64     `json:"id"`
-	AuthorDiscordID string    `json:"author_discord_user_id"`
-	AuthorUsername  string    `json:"author_username"`
-	From            string    `json:"from"`
-	To              string    `json:"to"`
-	Body            string    `json:"body"`
-	ChannelID       string    `json:"channel_id"`
-	MessageID       string    `json:"message_id"`
-	PostedOn        string    `json:"posted_on"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              int64  `json:"id"`
+	AuthorDiscordID string `json:"author_discord_user_id"`
+	AuthorUsername  string `json:"author_username"`
+	// AuthorDisplayName is the name the server shows for the author.
+	AuthorDisplayName string    `json:"author_display_name"`
+	From              string    `json:"from"`
+	To                string    `json:"to"`
+	Body              string    `json:"body"`
+	ChannelID         string    `json:"channel_id"`
+	MessageID         string    `json:"message_id"`
+	PostedOn          string    `json:"posted_on"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 func toTeamNoteDTO(n domain.TeamNote) teamNoteDTO {
 	return teamNoteDTO{
-		ID: n.ID, AuthorDiscordID: n.AuthorDiscordID, AuthorUsername: n.AuthorUsername,
+		ID: n.ID, AuthorDiscordID: n.AuthorDiscordID, AuthorUsername: n.AuthorUsername, AuthorDisplayName: n.AuthorDisplayName,
 		From: n.From.Format(dateLayout), To: n.To.Format(dateLayout), Body: n.Body,
 		ChannelID: n.ChannelID, MessageID: n.MessageID, PostedOn: n.PostedOn.Format(dateLayout), UpdatedAt: n.UpdatedAt,
 	}

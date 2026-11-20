@@ -164,15 +164,15 @@ func (r *VacationRepo) History(ctx context.Context, userID string, since time.Ti
 
 func (r *VacationRepo) ForGuild(ctx context.Context, guildID string, since time.Time) ([]domain.Vacation, error) {
 	// The members' own vacations count here too; a member who left the server is no longer listed.
-	rows, err := r.db.Query(ctx, `SELECT `+vacationCols+`, m.username`+vacationFrom+`
+	rows, err := r.db.Query(ctx, `SELECT `+vacationCols+`, m.username, `+displayName("m")+vacationFrom+`
 		JOIN guilds g ON g.discord_id = $1
 		JOIN members m ON m.guild_id = g.id AND m.discord_id = v.user_discord_id AND m.in_server
 		WHERE (v.guild_id IS NULL OR v.guild_id = g.id) AND v.ends_on >= $2 AND NOT v.archived
-		ORDER BY v.starts_on, lower(m.username), v.guild_id NULLS FIRST`, guildID, since)
+		ORDER BY v.starts_on, lower(`+displayName("m")+`), v.guild_id NULLS FIRST`, guildID, since)
 	return collect(rows, err, func(row pgx.Row) (domain.Vacation, error) {
-		var name string
-		v, err := scanVacation(row, &name)
-		v.Username = name
+		var username, name string
+		v, err := scanVacation(row, &username, &name)
+		v.Username, v.DisplayName = username, name
 		return v, err
 	})
 }

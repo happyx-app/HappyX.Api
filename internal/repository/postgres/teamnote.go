@@ -19,14 +19,14 @@ type TeamNoteRepo struct{ db *pgxpool.Pool }
 
 func NewTeamNoteRepo(db *pgxpool.Pool) *TeamNoteRepo { return &TeamNoteRepo{db: db} }
 
-const teamNoteCols = `n.id, g.discord_id, m.discord_id, m.username, n.period_from, n.period_to, n.body,
+var teamNoteCols = `n.id, g.discord_id, m.discord_id, m.username, ` + displayName("m") + `, n.period_from, n.period_to, n.body,
 	n.channel_id, n.message_id, n.posted_on, n.created_at, n.updated_at`
 
 const teamNoteFrom = ` FROM team_notes n JOIN guilds g ON g.id = n.guild_id JOIN members m ON m.id = n.author_member_id `
 
 func scanTeamNote(row pgx.Row) (domain.TeamNote, error) {
 	var n domain.TeamNote
-	err := row.Scan(&n.ID, &n.GuildDiscordID, &n.AuthorDiscordID, &n.AuthorUsername, &n.From, &n.To, &n.Body,
+	err := row.Scan(&n.ID, &n.GuildDiscordID, &n.AuthorDiscordID, &n.AuthorUsername, &n.AuthorDisplayName, &n.From, &n.To, &n.Body,
 		&n.ChannelID, &n.MessageID, &n.PostedOn, &n.CreatedAt, &n.UpdatedAt)
 	n.From, n.To, n.PostedOn = domain.TruncateDay(n.From), domain.TruncateDay(n.To), domain.TruncateDay(n.PostedOn)
 	return n, notFound(err)

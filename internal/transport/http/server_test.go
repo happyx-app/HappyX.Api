@@ -146,7 +146,7 @@ func TestKudosFlow(t *testing.T) {
 		want               int
 	}{
 		{"POST", "/v1/guilds", `{"discord_guild_id":"` + g + `","name":"Test","admin_discord_user_id":"300000000000000001"}`, 200},
-		{"PUT", "/v1/guilds/" + g + "/members/" + ana, `{"username":"ana"}`, 200},
+		{"PUT", "/v1/guilds/" + g + "/members/" + ana, `{"username":"ana","display_name":"Ana"}`, 200},
 		{"PUT", "/v1/guilds/" + g + "/members/" + bea, `{"username":"bea","active":false}`, 200},
 		{"POST", "/v1/guilds/" + g + "/kudos", kudos(ana, bea, "gracias por el cable"), 201},
 		{"POST", "/v1/guilds/" + g + "/kudos", kudos(ana, ana, "yo mismo"), 400},
@@ -188,5 +188,40 @@ func TestKudosFlow(t *testing.T) {
 	}
 	if h := hl[0].(map[string]any); h["from_username"] != "ana" || h["to_username"] != "bea" || h["day"] != "2026-10-22" {
 		t.Fatalf("kudos keep their names even in anonymous guilds: %v", h)
+	}
+	// The names the server shows: bea's falls back to her username, as the bot never sent one.
+	if h := hl[0].(map[string]any); h["from_display_name"] != "Ana" || h["to_display_name"] != "bea" {
+		t.Fatalf("kudos display names: %v", h)
+	}
+}
+
+func TestSyncMembersDisplayName(t *testing.T) {
+	srv := newTestServer(t)
+	const g, ana, bea = "100000000000000001", "200000000000000001", "200000000000000002"
+	if code, body := do(t, srv, "POST", "/v1/guilds", key, `{"discord_guild_id":"`+g+`","name":"Test","admin_discord_user_id":"300000000000000001"}`); code != 200 {
+		t.Fatalf("register: %d %v", code, body)
+	}
+	sync := `{"members":[{"discord_user_id":"` + ana + `","username":"ana.garcia_corp","display_name":"Ana"},{"discord_user_id":"` + bea + `","username":"bea_corp"}]}`
+	if code, body := do(t, srv, "PUT", "/v1/guilds/"+g+"/members", key, sync); code != 204 && code != 200 {
+		t.Fatalf("sync: %d %v", code, body)
+	}
+	raw, err := doRaw(t, srv, "GET", "/v1/guilds/"+g+"/members")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ms []map[string]any
+	if err := json.Unmarshal([]byte(raw), &ms); err != nil {
+		t.Fatalf("%v: %s", err, raw)
+	}
+	names := map[any]any{}
+	for _, m := range ms {
+		names[m["username"]] = m["display_name"]
+	}
+	if names["ana.garcia_corp"] != "Ana" || names["bea_corp"] != "bea_corp" {
+		t.Fatalf("display names, falling back to the username: %s", raw)
+	}
+	long := strings.Repeat("a", 101)
+	if code, _ := do(t, srv, "PUT", "/v1/guilds/"+g+"/members/"+ana, key, `{"username":"ana","display_name":"`+long+`"}`); code != 400 {
+		t.Fatalf("a display name over 100 characters: got %d, want 400", code)
 	}
 }

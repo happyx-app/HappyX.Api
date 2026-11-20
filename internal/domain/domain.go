@@ -284,7 +284,13 @@ type Member struct {
 	GuildDiscordID string
 	DiscordID      string
 	Username       string
-	Active         bool
+	// DisplayName is the name the Discord server shows for them: their server nickname, else
+	// their Discord display name, else their username. In an Upsert or sync, empty keeps the
+	// stored one. Read back, it is the username when the bot never reported one, and it carries
+	// the username in brackets when another member of the server goes by the same name:
+	// "David (david.moreno)". Every read model's display name follows the same rule.
+	DisplayName string
+	Active      bool
 	// RoleIDs are the member's Discord roles, as the bot last saw them. In an Upsert, nil keeps
 	// the stored ones.
 	RoleIDs []string
@@ -302,6 +308,9 @@ func (m Member) Validate() error {
 	}
 	if utf8.RuneCountInString(m.Username) > 100 {
 		return invalid("username must be at most 100 characters")
+	}
+	if utf8.RuneCountInString(m.DisplayName) > 100 {
+		return invalid("display_name must be at most 100 characters")
 	}
 	return ValidateRoleIDs(m.RoleIDs)
 }

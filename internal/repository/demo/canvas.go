@@ -109,9 +109,10 @@ func demoSketches() []sketch {
 // demoCanvas turns the sketches into strokes. A drawing's strokes share its anchor, the centre of
 // its points as a fraction of the screen, and its points are px from there.
 func demoCanvas(now time.Time) []domain.CanvasStroke {
-	ids := map[string]string{}
+	ids, names := map[string]string{}, map[string]string{}
 	for _, p := range people {
 		ids[p.name] = p.id
+		names[p.name] = p.display
 	}
 	sketches := demoSketches()
 	key := func(sk sketch) string { return fmt.Sprint(sk.author, sk.ago) }
@@ -139,7 +140,7 @@ func demoCanvas(now time.Time) []domain.CanvasStroke {
 		for _, l := range sk.lines {
 			id++
 			st := domain.CanvasStroke{
-				ID: id, GuildDiscordID: GuildID, AuthorDiscordID: ids[sk.author], AuthorUsername: sk.author,
+				ID: id, GuildDiscordID: GuildID, AuthorDiscordID: ids[sk.author], AuthorUsername: sk.author, AuthorDisplayName: names[sk.author],
 				DrawingID: drawings[k], Color: sk.color, AnchorX: (800 + cx) / 1600, AnchorY: cy / 1000,
 				CreatedAt: now.Add(-sk.ago),
 			}

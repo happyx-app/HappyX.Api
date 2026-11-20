@@ -47,10 +47,10 @@ type GuildRepository interface {
 
 type MemberRepository interface {
 	// Upsert creates the member (active unless setActive says otherwise) or updates its
-	// username. An existing member's active flag only changes when setActive is non-nil, so a
+	// names (an empty display name keeps the stored one). An existing member's active flag only changes when setActive is non-nil, so a
 	// bulk sync never re-subscribes someone who opted out.
 	Upsert(ctx context.Context, m domain.Member, setActive *bool) (domain.Member, error)
-	// SyncMany upserts members of one guild in a single transaction, refreshing their username
+	// SyncMany upserts members of one guild in a single transaction, refreshing their names
 	// and roles. Existing members keep their opt-in state; new ones are opted in.
 	SyncMany(ctx context.Context, guildID string, ms []domain.Member) error
 	Get(ctx context.Context, guildID, userID string) (domain.Member, error)

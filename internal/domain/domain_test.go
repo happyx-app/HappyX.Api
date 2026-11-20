@@ -65,10 +65,10 @@ func TestBuildReport(t *testing.T) {
 		{MemberDiscordID: userC, Day: day("2026-10-19"), Mood: MoodGood},
 		{MemberDiscordID: userA, Day: day("2026-10-21"), Mood: MoodNeutral},
 	}
-	usernames := map[string]string{userA: "ana", userB: "bob", userC: "cris"}
+	members := map[string]Member{userA: {Username: "ana", DisplayName: "Ana"}, userB: {Username: "bob", DisplayName: "Bob"}, userC: {Username: "cris", DisplayName: "Cris"}}
 
 	g := Guild{DiscordID: guildA, Settings: DefaultGuildSettings()}
-	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
+	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, members)
 
 	if r.Responses != 4 || r.Respondents != 3 || r.Withheld || r.AnonymityThreshold != 3 {
 		t.Fatalf("responses/respondents/withheld = %d/%d/%v, want 4/3/false", r.Responses, r.Respondents, r.Withheld)
@@ -91,7 +91,7 @@ func TestBuildReport(t *testing.T) {
 	if r.Distribution[MoodGreat] != 1 || r.Distribution[MoodAwful] != 0 || r.Distribution[MoodNeutral] != 0 {
 		t.Fatalf("unexpected distribution: %v", r.Distribution)
 	}
-	if len(r.Messages) != 1 || r.Messages[0].MemberDiscordID != "" || r.Messages[0].Username != "" {
+	if len(r.Messages) != 1 || r.Messages[0].MemberDiscordID != "" || r.Messages[0].Username != "" || r.Messages[0].DisplayName != "" {
 		t.Fatalf("anonymous report leaked identity: %+v", r.Messages)
 	}
 	if m := r.Messages[0]; m.Day.IsZero() || m.Mood == 0 || !m.Anonymous() {
@@ -99,8 +99,8 @@ func TestBuildReport(t *testing.T) {
 	}
 
 	g.Settings.Anonymous = false
-	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
-	if m := r.Messages[0]; m.Username != "ana" || m.MemberDiscordID != userA || m.Day != day("2026-10-19") || m.Mood != MoodGreat {
+	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, members)
+	if m := r.Messages[0]; m.Username != "ana" || m.DisplayName != "Ana" || m.MemberDiscordID != userA || m.Day != day("2026-10-19") || m.Mood != MoodGreat {
 		t.Fatalf("named report missing identity: %+v", r.Messages)
 	}
 	if d := r.Days[2]; d.Withheld || d.Average != 3 {
@@ -337,29 +337,29 @@ func TestBuildReportKeepsEarlierAnswersAnonymous(t *testing.T) {
 		{MemberDiscordID: userD, Day: day("2026-10-19"), Mood: MoodGood, Anonymous: true},
 		{MemberDiscordID: userB, Day: day("2026-10-20"), Mood: MoodBad, Message: "said in public"},
 	}
-	usernames := map[string]string{userA: "ana", userB: "bob", userC: "cris"}
+	members := map[string]Member{userA: {Username: "ana", DisplayName: "Ana"}, userB: {Username: "bob", DisplayName: "Bob"}, userC: {Username: "cris", DisplayName: "Cris"}}
 	g := Guild{DiscordID: guildA, Settings: DefaultGuildSettings()}
 	g.Settings.Anonymous = false
 
-	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
+	r := BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, members)
 	if len(r.Messages) != 2 {
 		t.Fatalf("messages: %+v", r.Messages)
 	}
 	if m := r.Messages[1]; m.Username != "bob" || m.MemberDiscordID != userB {
 		t.Fatalf("answer given in public lost its author: %+v", m)
 	}
-	if m := r.Messages[0]; m.MemberDiscordID != "" || m.Username != "" || m.Day != day("2026-10-19") {
+	if m := r.Messages[0]; m.MemberDiscordID != "" || m.Username != "" || m.DisplayName != "" || m.Day != day("2026-10-19") {
 		t.Fatalf("answer given while anonymous shows its author or lost its day: %+v", m)
 	}
 
 	// With only two people answering while anonymous, that day is left out, comment included.
-	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), slices.Delete(slices.Clone(entries), 2, 3), usernames)
+	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), slices.Delete(slices.Clone(entries), 2, 3), members)
 	if d := r.Days[0]; !d.Withheld || len(r.Messages) != 1 {
 		t.Fatalf("anonymous answers of two people show: %+v", r)
 	}
 
 	g.Settings.Anonymous = true
-	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, usernames)
+	r = BuildReport(g, day("2026-10-19"), day("2026-10-25"), entries, members)
 	for _, m := range r.Messages {
 		if m.MemberDiscordID != "" || m.Username != "" {
 			t.Fatalf("anonymous guild shows an author: %+v", m)

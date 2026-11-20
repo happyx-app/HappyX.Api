@@ -132,7 +132,7 @@ func (r members) ListInServer(_ context.Context, guildID string) ([]domain.Membe
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Username) < strings.ToLower(out[j].Username) })
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].DisplayName) < strings.ToLower(out[j].DisplayName) })
 	return out, nil
 }
 

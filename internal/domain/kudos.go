@@ -15,14 +15,17 @@ const (
 // Kudos is public thanks from one member of a guild to another. Unlike moods, kudos are never
 // anonymous: they are posted in the server with both names.
 type Kudos struct {
-	GuildDiscordID    string
-	GiverDiscordID    string
-	GiverUsername     string
-	ReceiverDiscordID string
-	ReceiverUsername  string
-	Day               time.Time // date only, in the guild's timezone
-	Message           string
-	CreatedAt         time.Time
+	GuildDiscordID string
+	GiverDiscordID string
+	GiverUsername  string
+	// GiverDisplayName and ReceiverDisplayName are the names their server shows for them.
+	GiverDisplayName    string
+	ReceiverDiscordID   string
+	ReceiverUsername    string
+	ReceiverDisplayName string
+	Day                 time.Time // date only, in the guild's timezone
+	Message             string
+	CreatedAt           time.Time
 }
 
 func (k Kudos) Validate() error {

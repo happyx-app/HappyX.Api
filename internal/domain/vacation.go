@@ -18,9 +18,10 @@ type Vacation struct {
 	GuildName      string // filled in when reading
 	From, To       time.Time
 	SetByDiscordID string
-	// Username is the member's, filled in when listing a server's vacations.
-	Username  string
-	CreatedAt time.Time
+	// Username and DisplayName are the member's, filled in when listing a server's vacations.
+	Username    string
+	DisplayName string
+	CreatedAt   time.Time
 }
 
 // MaxVacationDays is the longest vacation, counting both ends. A longer absence is what pausing
