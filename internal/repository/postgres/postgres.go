@@ -300,11 +300,30 @@ type MemberRepo struct{ db *pgxpool.Pool }
 
 func NewMemberRepo(db *pgxpool.Pool) *MemberRepo { return &MemberRepo{db: db} }
 
-const memberCols = `g.discord_id, m.discord_id, m.username, m.active, m.role_ids, m.in_server, m.created_at`
+// serverName is the SQL for the name a member's server shows for them, given the alias of their
+// members row: the display name the bot reported, else their username. members_server_name_idx
+// indexes it.
+func serverName(alias string) string {
+	return "COALESCE(NULLIF(" + alias + ".display_name, ''), " + alias + ".username)"
+}
+
+// displayName is the SQL for the name HappyX shows for a member, given the alias of their
+// members row: the name their server shows, with their username in brackets when another
+// member of the server goes by the same name (ignoring case), so two Davids can be told apart
+// on every screen and in every message. Members who erased their data have no name to clash.
+func displayName(alias string) string {
+	name := serverName(alias)
+	return `CASE WHEN ` + alias + `.username <> '' AND ` + name + ` <> ` + alias + `.username AND EXISTS (
+		SELECT 1 FROM members same WHERE same.guild_id = ` + alias + `.guild_id AND same.id <> ` + alias + `.id
+		AND same.username <> '' AND lower(` + serverName("same") + `) = lower(` + name + `))
+	THEN ` + name + ` || ' (' || ` + alias + `.username || ')' ELSE ` + name + ` END`
+}
+
+var memberCols = `g.discord_id, m.discord_id, m.username, ` + displayName("m") + `, m.active, m.role_ids, m.in_server, m.created_at`
 
 func scanMember(row pgx.Row) (domain.Member, error) {
 	var m domain.Member
-	err := row.Scan(&m.GuildDiscordID, &m.DiscordID, &m.Username, &m.Active, &m.RoleIDs, &m.InServer, &m.CreatedAt)
+	err := row.Scan(&m.GuildDiscordID, &m.DiscordID, &m.Username, &m.DisplayName, &m.Active, &m.RoleIDs, &m.InServer, &m.CreatedAt)
 	return m, notFound(err)
 }
 
@@ -312,10 +331,11 @@ func (r *MemberRepo) Upsert(ctx context.Context, m domain.Member, setActive *boo
 	return scanMember(r.db.QueryRow(ctx, `
 		WITH g AS (SELECT id, discord_id FROM guilds WHERE discord_id = $1),
 		     m AS (
-		         INSERT INTO members (guild_id, discord_id, username, active, role_ids)
-		         SELECT g.id, $2, $3, COALESCE($4::boolean, TRUE), COALESCE($5::text[], '{}') FROM g
+		         INSERT INTO members (guild_id, discord_id, username, display_name, active, role_ids)
+		         SELECT g.id, $2, $3, $6, COALESCE($4::boolean, TRUE), COALESCE($5::text[], '{}') FROM g
 		         ON CONFLICT (guild_id, discord_id) DO UPDATE
 		         SET username = EXCLUDED.username,
+		             display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), members.display_name),
 		             active = COALESCE($4::boolean, members.active),
 		             role_ids = COALESCE($5::text[], members.role_ids),
 		             in_server = TRUE,
@@ -323,7 +343,7 @@ func (r *MemberRepo) Upsert(ctx context.Context, m domain.Member, setActive *boo
 		         RETURNING *
 		     )
 		SELECT `+memberCols+` FROM m JOIN g ON g.id = m.guild_id`,
-		m.GuildDiscordID, m.DiscordID, m.Username, setActive, m.RoleIDs))
+		m.GuildDiscordID, m.DiscordID, m.Username, setActive, m.RoleIDs, m.DisplayName))
 }
 
 func (r *MemberRepo) SyncMany(ctx context.Context, guildID string, ms []domain.Member) error {
@@ -340,10 +360,12 @@ func (r *MemberRepo) SyncMany(ctx context.Context, guildID string, ms []domain.M
 	b := &pgx.Batch{}
 	for _, m := range ms {
 		b.Queue(`
-			INSERT INTO members (guild_id, discord_id, username, role_ids) VALUES ($1, $2, $3, $4)
+			INSERT INTO members (guild_id, discord_id, username, display_name, role_ids) VALUES ($1, $2, $3, $5, $4)
 			ON CONFLICT (guild_id, discord_id) DO UPDATE
-			SET username = EXCLUDED.username, role_ids = EXCLUDED.role_ids, in_server = TRUE, updated_at = now()`,
-			gid, m.DiscordID, m.Username, m.RoleIDs)
+			SET username = EXCLUDED.username,
+			    display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), members.display_name),
+			    role_ids = EXCLUDED.role_ids, in_server = TRUE, updated_at = now()`,
+			gid, m.DiscordID, m.Username, m.RoleIDs, m.DisplayName)
 	}
 	if err := tx.SendBatch(ctx, b).Close(); err != nil {
 		return err
@@ -366,7 +388,7 @@ func (r *MemberRepo) ListActive(ctx context.Context, guildID string) ([]domain.M
 func (r *MemberRepo) ListInServer(ctx context.Context, guildID string) ([]domain.Member, error) {
 	return r.list(ctx, `
 		SELECT `+memberCols+` FROM members m JOIN guilds g ON g.id = m.guild_id
-		WHERE g.discord_id = $1 AND m.in_server ORDER BY lower(m.username), m.id`, guildID)
+		WHERE g.discord_id = $1 AND m.in_server ORDER BY lower(`+displayName("m")+`), m.id`, guildID)
 }
 
 func (r *MemberRepo) list(ctx context.Context, sql string, args ...any) ([]domain.Member, error) {
@@ -574,12 +596,13 @@ func NewKudosRepo(db *pgxpool.Pool) *KudosRepo { return &KudosRepo{db: db} }
 
 // Both members are looked up within the guild, so kudos can never link members of
 // different guilds.
-const kudosCols = `g.discord_id, gm.discord_id, gm.username, rm.discord_id, rm.username, k.day, k.message, k.created_at`
+var kudosCols = `g.discord_id, gm.discord_id, gm.username, ` + displayName("gm") + `, rm.discord_id, rm.username, ` + displayName("rm") + `,
+	k.day, k.message, k.created_at`
 
 func scanKudos(row pgx.Row) (domain.Kudos, error) {
 	var k domain.Kudos
-	err := row.Scan(&k.GuildDiscordID, &k.GiverDiscordID, &k.GiverUsername, &k.ReceiverDiscordID,
-		&k.ReceiverUsername, &k.Day, &k.Message, &k.CreatedAt)
+	err := row.Scan(&k.GuildDiscordID, &k.GiverDiscordID, &k.GiverUsername, &k.GiverDisplayName, &k.ReceiverDiscordID,
+		&k.ReceiverUsername, &k.ReceiverDisplayName, &k.Day, &k.Message, &k.CreatedAt)
 	k.Day = domain.TruncateDay(k.Day)
 	return k, notFound(err)
 }
@@ -659,12 +682,12 @@ func (r *GameRepo) CreateRound(ctx context.Context, rd domain.GameRound) (domain
 }
 
 // gameRoundCols needs members m LEFT JOINed on the proposer.
-const gameRoundCols = `g.discord_id, rd.week, rd.question, COALESCE(m.discord_id, ''), COALESCE(m.username, ''),
-	rd.proposer_member_id IS NOT NULL, rd.created_at`
+var gameRoundCols = `g.discord_id, rd.week, rd.question, COALESCE(m.discord_id, ''), COALESCE(m.username, ''),
+	COALESCE(` + displayName("m") + `, ''), rd.proposer_member_id IS NOT NULL, rd.created_at`
 
 func scanGameRound(row pgx.Row) (domain.GameRound, error) {
 	var rd domain.GameRound
-	err := row.Scan(&rd.GuildDiscordID, &rd.Week, &rd.Question, &rd.ProposerDiscordID, &rd.ProposerUsername, &rd.Proposed, &rd.CreatedAt)
+	err := row.Scan(&rd.GuildDiscordID, &rd.Week, &rd.Question, &rd.ProposerDiscordID, &rd.ProposerUsername, &rd.ProposerDisplayName, &rd.Proposed, &rd.CreatedAt)
 	rd.Week = domain.TruncateDay(rd.Week)
 	return rd, notFound(err)
 }
@@ -699,11 +722,11 @@ func (r *GameRepo) ListRounds(ctx context.Context, guildID string, from, to time
 	return out, rows.Err()
 }
 
-const gameAnswerCols = `a.ref::text, g.discord_id, rd.week, m.discord_id, m.username, a.answer, a.created_at, a.updated_at`
+var gameAnswerCols = `a.ref::text, g.discord_id, rd.week, m.discord_id, m.username, ` + displayName("m") + `, a.answer, a.created_at, a.updated_at`
 
 func scanGameAnswer(row pgx.Row) (domain.GameAnswer, error) {
 	var a domain.GameAnswer
-	err := row.Scan(&a.ID, &a.GuildDiscordID, &a.Week, &a.MemberDiscordID, &a.Username, &a.Text, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.GuildDiscordID, &a.Week, &a.MemberDiscordID, &a.Username, &a.DisplayName, &a.Text, &a.CreatedAt, &a.UpdatedAt)
 	a.Week = domain.TruncateDay(a.Week)
 	return a, notFound(err)
 }
@@ -832,11 +855,11 @@ func (r *GameRepo) ListGuessesBetween(ctx context.Context, guildID string, from,
 	return out, rows.Err()
 }
 
-const gameProposalCols = `g.discord_id, p.week, m.discord_id, m.username, p.question`
+var gameProposalCols = `g.discord_id, p.week, m.discord_id, m.username, ` + displayName("m") + `, p.question`
 
 func scanGameProposal(row pgx.Row) (domain.GameProposal, error) {
 	var p domain.GameProposal
-	err := row.Scan(&p.GuildDiscordID, &p.Week, &p.MemberDiscordID, &p.Username, &p.Text)
+	err := row.Scan(&p.GuildDiscordID, &p.Week, &p.MemberDiscordID, &p.Username, &p.DisplayName, &p.Text)
 	p.Week = domain.TruncateDay(p.Week)
 	return p, notFound(err)
 }

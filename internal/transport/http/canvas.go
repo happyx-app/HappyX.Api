@@ -12,8 +12,9 @@ import (
 // --- Team canvas, on the dashboard ---
 
 type canvasAuthorDTO struct {
-	DiscordID string `json:"discord_user_id"`
-	Username  string `json:"username"`
+	DiscordID   string `json:"discord_user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
 }
 
 type canvasStrokeDTO struct {
@@ -39,7 +40,7 @@ func toCanvasStrokeDTO(s domain.CanvasStroke, viewerID string, moderator bool) c
 		d.Points = append(d.Points, p.X, p.Y)
 	}
 	if moderator {
-		d.Author = &canvasAuthorDTO{s.AuthorDiscordID, s.AuthorUsername}
+		d.Author = &canvasAuthorDTO{s.AuthorDiscordID, s.AuthorUsername, s.AuthorDisplayName}
 	}
 	return d
 }

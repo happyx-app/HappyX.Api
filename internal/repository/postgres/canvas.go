@@ -16,14 +16,14 @@ type CanvasRepo struct{ db *pgxpool.Pool }
 
 func NewCanvasRepo(db *pgxpool.Pool) *CanvasRepo { return &CanvasRepo{db: db} }
 
-const canvasCols = `s.id, g.discord_id, m.discord_id, m.username, s.drawing_id, s.color, s.anchor_x, s.anchor_y, s.points, s.created_at`
+var canvasCols = `s.id, g.discord_id, m.discord_id, m.username, ` + displayName("m") + `, s.drawing_id, s.color, s.anchor_x, s.anchor_y, s.points, s.created_at`
 
 func scanCanvasStroke(row pgx.Row) (domain.CanvasStroke, error) {
 	var s domain.CanvasStroke
 	var ax, ay float32
 	var color int16
 	var points []byte
-	err := row.Scan(&s.ID, &s.GuildDiscordID, &s.AuthorDiscordID, &s.AuthorUsername, &s.DrawingID, &color, &ax, &ay, &points, &s.CreatedAt)
+	err := row.Scan(&s.ID, &s.GuildDiscordID, &s.AuthorDiscordID, &s.AuthorUsername, &s.AuthorDisplayName, &s.DrawingID, &color, &ax, &ay, &points, &s.CreatedAt)
 	s.Color, s.AnchorX, s.AnchorY, s.Points = int(color), float64(ax), float64(ay), domain.DecodeCanvasPoints(points)
 	return s, notFound(err)
 }

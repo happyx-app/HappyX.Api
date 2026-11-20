@@ -190,15 +190,16 @@ func (s *Server) webDeleteMyVacation(w http.ResponseWriter, r *http.Request, v d
 // guildVacationDTO is a member's vacation as the server's admins see it. set_here is false for
 // the member's own vacation, which admins can see but not change.
 type guildVacationDTO struct {
-	UserID   string `json:"discord_user_id"`
-	Username string `json:"username"`
-	From     string `json:"from"`
-	To       string `json:"to"`
-	SetHere  bool   `json:"set_here"`
+	UserID      string `json:"discord_user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	SetHere     bool   `json:"set_here"`
 }
 
 func toGuildVacationDTO(v domain.Vacation) guildVacationDTO {
-	return guildVacationDTO{v.UserDiscordID, v.Username, v.From.Format(dateLayout), v.To.Format(dateLayout), v.GuildDiscordID != ""}
+	return guildVacationDTO{v.UserDiscordID, v.Username, v.DisplayName, v.From.Format(dateLayout), v.To.Format(dateLayout), v.GuildDiscordID != ""}
 }
 
 // webGuildVacations lists the vacations of the server's members that haven't ended, and the
@@ -210,8 +211,9 @@ func (s *Server) webGuildVacations(w http.ResponseWriter, r *http.Request, v dom
 		return
 	}
 	type memberDTO struct {
-		ID       string `json:"discord_user_id"`
-		Username string `json:"username"`
+		ID          string `json:"discord_user_id"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
 	}
 	out := struct {
 		Vacations []guildVacationDTO `json:"vacations"`
@@ -221,7 +223,7 @@ func (s *Server) webGuildVacations(w http.ResponseWriter, r *http.Request, v dom
 		out.Vacations = append(out.Vacations, toGuildVacationDTO(vac))
 	}
 	for _, m := range gv.Members {
-		out.Members = append(out.Members, memberDTO{m.DiscordID, m.Username})
+		out.Members = append(out.Members, memberDTO{m.DiscordID, m.Username, m.DisplayName})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

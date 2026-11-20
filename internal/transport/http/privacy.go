@@ -20,10 +20,12 @@ const exportVersion = 1
 const serverExportVersion = 2
 
 type exportKudosDTO struct {
-	Day          string `json:"day"`
-	FromUsername string `json:"from_username,omitempty"`
-	ToUsername   string `json:"to_username,omitempty"`
-	Message      string `json:"message"`
+	Day             string `json:"day"`
+	FromUsername    string `json:"from_username,omitempty"`
+	FromDisplayName string `json:"from_display_name,omitempty"`
+	ToUsername      string `json:"to_username,omitempty"`
+	ToDisplayName   string `json:"to_display_name,omitempty"`
+	Message         string `json:"message"`
 }
 
 func toExportKudos(ks []domain.Kudos, from, to bool) []exportKudosDTO {
@@ -31,10 +33,10 @@ func toExportKudos(ks []domain.Kudos, from, to bool) []exportKudosDTO {
 	for _, k := range ks {
 		d := exportKudosDTO{Day: k.Day.Format(dateLayout), Message: k.Message}
 		if from {
-			d.FromUsername = k.GiverUsername
+			d.FromUsername, d.FromDisplayName = k.GiverUsername, k.GiverDisplayName
 		}
 		if to {
-			d.ToUsername = k.ReceiverUsername
+			d.ToUsername, d.ToDisplayName = k.ReceiverUsername, k.ReceiverDisplayName
 		}
 		out = append(out, d)
 	}
@@ -47,9 +49,10 @@ type exportServerDTO struct {
 }
 
 type myMemberDTO struct {
-	Username   string    `json:"username"`
-	TakingPart bool      `json:"taking_part"`
-	JoinedAt   time.Time `json:"joined_at"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"display_name"`
+	TakingPart  bool      `json:"taking_part"`
+	JoinedAt    time.Time `json:"joined_at"`
 }
 
 type myExportMoodDTO struct {
@@ -69,10 +72,11 @@ type myGameAnswerDTO struct {
 }
 
 type myGameGuessDTO struct {
-	Week            string `json:"week"`
-	Question        string `json:"question"`
-	Answer          string `json:"answer"`
-	GuessedUsername string `json:"guessed_username"`
+	Week               string `json:"week"`
+	Question           string `json:"question"`
+	Answer             string `json:"answer"`
+	GuessedUsername    string `json:"guessed_username"`
+	GuessedDisplayName string `json:"guessed_display_name"`
 }
 
 type myGameProposalDTO struct {
@@ -95,13 +99,15 @@ type myServerDataDTO struct {
 
 // exportTeamNoteDTO is what an admin told the team after a report.
 type exportTeamNoteDTO struct {
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	Body      string    `json:"body"`
-	Author    string    `json:"author,omitempty"`
-	ChannelID string    `json:"channel_id"`
-	PostedOn  string    `json:"posted_on"`
-	UpdatedAt time.Time `json:"updated_at"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Body   string `json:"body"`
+	Author string `json:"author,omitempty"`
+	// AuthorDisplayName is the name the server shows for the author.
+	AuthorDisplayName string    `json:"author_display_name,omitempty"`
+	ChannelID         string    `json:"channel_id"`
+	PostedOn          string    `json:"posted_on"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 func toExportTeamNotes(ns []domain.TeamNote, withAuthor bool) []exportTeamNoteDTO {
@@ -109,7 +115,7 @@ func toExportTeamNotes(ns []domain.TeamNote, withAuthor bool) []exportTeamNoteDT
 	for _, n := range ns {
 		d := exportTeamNoteDTO{From: n.From.Format(dateLayout), To: n.To.Format(dateLayout), Body: n.Body, ChannelID: n.ChannelID, PostedOn: n.PostedOn.Format(dateLayout), UpdatedAt: n.UpdatedAt}
 		if withAuthor {
-			d.Author = n.AuthorUsername
+			d.Author, d.AuthorDisplayName = n.AuthorUsername, n.AuthorDisplayName
 		}
 		out = append(out, d)
 	}
@@ -141,7 +147,7 @@ func (s *Server) webMyData(w http.ResponseWriter, r *http.Request, v domain.View
 	for _, md := range d.Guilds {
 		sd := myServerDataDTO{
 			exportServerDTO: exportServerDTO{md.Guild.DiscordID, md.Guild.Name},
-			Member:          myMemberDTO{md.Member.Username, md.Member.Active, md.Member.CreatedAt},
+			Member:          myMemberDTO{md.Member.Username, md.Member.DisplayName, md.Member.Active, md.Member.CreatedAt},
 			Moods:           []myExportMoodDTO{},
 			KudosGiven:      toExportKudos(md.KudosGiven, false, true),
 			KudosReceived:   toExportKudos(md.KudosReceived, true, false),
@@ -158,7 +164,7 @@ func (s *Server) webMyData(w http.ResponseWriter, r *http.Request, v domain.View
 			sd.GameAnswers = append(sd.GameAnswers, myGameAnswerDTO{a.Week.Format(dateLayout), a.Question, a.Text})
 		}
 		for _, g := range md.GameGuesses {
-			sd.GameGuesses = append(sd.GameGuesses, myGameGuessDTO{g.Week.Format(dateLayout), g.Question, g.Answer, g.GuessedUsername})
+			sd.GameGuesses = append(sd.GameGuesses, myGameGuessDTO{g.Week.Format(dateLayout), g.Question, g.Answer, g.GuessedUsername, g.GuessedDisplayName})
 		}
 		for _, p := range md.GameProposals {
 			sd.GameProposals = append(sd.GameProposals, myGameProposalDTO{p.Week.Format(dateLayout), p.Text})
@@ -212,17 +218,19 @@ type serverExportDTO struct {
 }
 
 type exportMemberDTO struct {
-	DiscordID  string    `json:"discord_user_id"`
-	Username   string    `json:"username"`
-	TakingPart bool      `json:"taking_part"`
-	JoinedAt   time.Time `json:"joined_at"`
+	DiscordID   string    `json:"discord_user_id"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"display_name"`
+	TakingPart  bool      `json:"taking_part"`
+	JoinedAt    time.Time `json:"joined_at"`
 }
 
 type exportMoodDTO struct {
-	Day      string `json:"day"`
-	Mood     int    `json:"mood"`
-	Message  string `json:"message,omitempty"`
-	Username string `json:"username"`
+	Day         string `json:"day"`
+	Mood        int    `json:"mood"`
+	Message     string `json:"message,omitempty"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
 }
 
 type exportDayDTO struct {
@@ -233,15 +241,18 @@ type exportDayDTO struct {
 }
 
 type exportAnswerDTO struct {
-	Answer   string `json:"answer"`
-	Username string `json:"username,omitempty"`
+	Answer      string `json:"answer"`
+	Username    string `json:"username,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 type exportRoundDTO struct {
-	Week       string            `json:"week"`
-	Question   string            `json:"question"`
-	ProposedBy string            `json:"proposed_by,omitempty"`
-	Answers    []exportAnswerDTO `json:"answers"`
+	Week       string `json:"week"`
+	Question   string `json:"question"`
+	ProposedBy string `json:"proposed_by,omitempty"`
+	// ProposedByDisplayName is the name the server shows for whoever proposed the question.
+	ProposedByDisplayName string            `json:"proposed_by_display_name,omitempty"`
+	Answers               []exportAnswerDTO `json:"answers"`
 }
 
 // webGuildExport downloads a server's data for those who may see its dashboard. Survey answers
@@ -285,10 +296,10 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 		out.Canvas = append(out.Canvas, toCanvasStrokeDTO(st, v.DiscordID, true))
 	}
 	for _, m := range x.Members {
-		out.Members = append(out.Members, exportMemberDTO{m.DiscordID, m.Username, m.Active, m.CreatedAt})
+		out.Members = append(out.Members, exportMemberDTO{m.DiscordID, m.Username, m.DisplayName, m.Active, m.CreatedAt})
 	}
 	for _, e := range x.Moods {
-		out.Moods = append(out.Moods, exportMoodDTO{e.Day.Format(dateLayout), int(e.Mood), e.Message, e.Username})
+		out.Moods = append(out.Moods, exportMoodDTO{e.Day.Format(dateLayout), int(e.Mood), e.Message, e.Username, e.DisplayName})
 	}
 	for _, d := range x.AnonymousDays {
 		dd := exportDayDTO{Day: d.Day.Format(dateLayout), Answers: d.Answers, Withheld: d.Withheld}
@@ -298,9 +309,9 @@ func (s *Server) webGuildExport(w http.ResponseWriter, r *http.Request, v domain
 		out.AnonymousDays = append(out.AnonymousDays, dd)
 	}
 	for _, rd := range x.Rounds {
-		er := exportRoundDTO{Week: rd.Week.Format(dateLayout), Question: rd.Question, ProposedBy: rd.ProposedBy, Answers: []exportAnswerDTO{}}
+		er := exportRoundDTO{Week: rd.Week.Format(dateLayout), Question: rd.Question, ProposedBy: rd.ProposedBy, ProposedByDisplayName: rd.ProposedByDisplayName, Answers: []exportAnswerDTO{}}
 		for _, a := range rd.Answers {
-			er.Answers = append(er.Answers, exportAnswerDTO{a.Text, a.Username})
+			er.Answers = append(er.Answers, exportAnswerDTO{a.Text, a.Username, a.DisplayName})
 		}
 		out.Games = append(out.Games, er)
 	}

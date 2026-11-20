@@ -21,10 +21,12 @@ var ErrTeamNoteTold = errors.New("this period already has a team note")
 type TeamNote struct {
 	ID             int64
 	GuildDiscordID string
-	// AuthorDiscordID is who published it; AuthorUsername their name, empty once they erased
-	// their data (the note goes with it).
-	AuthorDiscordID string
-	AuthorUsername  string
+	// AuthorDiscordID is who published it; AuthorUsername and AuthorDisplayName their names
+	// (the second as their server shows it), empty once they erased their data (the note goes
+	// with it).
+	AuthorDiscordID   string
+	AuthorUsername    string
+	AuthorDisplayName string
 	// From and To are the report's period the note is about.
 	From, To time.Time
 	Body     string

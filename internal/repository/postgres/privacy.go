@@ -91,7 +91,7 @@ func (r *PrivacyRepo) memberData(ctx context.Context, m domain.Member) (domain.M
 		return md, err
 	}
 	rows, qerr = r.db.Query(ctx, `
-		SELECT rd.week, rd.question, a.answer, m.discord_id, m.username
+		SELECT rd.week, rd.question, a.answer, m.discord_id, m.username, `+displayName("m")+`
 		FROM game_answers a
 		JOIN game_rounds rd ON rd.id = a.round_id
 		JOIN guilds g ON g.id = rd.guild_id
@@ -102,7 +102,7 @@ func (r *PrivacyRepo) memberData(ctx context.Context, m domain.Member) (domain.M
 		return md, err
 	}
 	rows, qerr = r.db.Query(ctx, `
-		SELECT rd.week, rd.question, a.answer, tm.username
+		SELECT rd.week, rd.question, a.answer, tm.username, `+displayName("tm")+`
 		FROM game_guesses gs
 		JOIN game_answers a ON a.id = gs.answer_id
 		JOIN game_rounds rd ON rd.id = a.round_id
@@ -113,7 +113,7 @@ func (r *PrivacyRepo) memberData(ctx context.Context, m domain.Member) (domain.M
 		ORDER BY rd.week, gs.created_at, a.id`, g, u)
 	if md.GameGuesses, err = collect(rows, qerr, func(row pgx.Row) (domain.MadeGuess, error) {
 		var mg domain.MadeGuess
-		err := row.Scan(&mg.Week, &mg.Question, &mg.Answer, &mg.GuessedUsername)
+		err := row.Scan(&mg.Week, &mg.Question, &mg.Answer, &mg.GuessedUsername, &mg.GuessedDisplayName)
 		mg.Week = domain.TruncateDay(mg.Week)
 		return mg, err
 	}); err != nil {
@@ -148,7 +148,7 @@ func (r *PrivacyRepo) memberData(ctx context.Context, m domain.Member) (domain.M
 
 func scanRoundAnswer(row pgx.Row) (domain.RoundAnswer, error) {
 	var a domain.RoundAnswer
-	err := row.Scan(&a.Week, &a.Question, &a.Text, &a.MemberDiscordID, &a.Username)
+	err := row.Scan(&a.Week, &a.Question, &a.Text, &a.MemberDiscordID, &a.Username, &a.DisplayName)
 	a.Week = domain.TruncateDay(a.Week)
 	return a, err
 }
@@ -179,7 +179,7 @@ func (r *PrivacyRepo) EraseUser(ctx context.Context, userID string) error {
 		// Their vacations, and their name on the ones they set for others as an admin.
 		`DELETE FROM vacations WHERE user_discord_id = $1`,
 		`UPDATE vacations SET set_by_discord_id = '' WHERE set_by_discord_id = $1`,
-		`UPDATE members SET active = FALSE, username = '', updated_at = now() WHERE discord_id = $1`,
+		`UPDATE members SET active = FALSE, username = '', display_name = '', updated_at = now() WHERE discord_id = $1`,
 	} {
 		if _, err := tx.Exec(ctx, sql, userID); err != nil {
 			return err
@@ -196,7 +196,7 @@ func (r *PrivacyRepo) GuildData(ctx context.Context, guildID string) (domain.Gui
 	}
 	rows, qerr := r.db.Query(ctx, `
 		SELECT `+memberCols+` FROM members m JOIN guilds g ON g.id = m.guild_id
-		WHERE g.discord_id = $1 ORDER BY lower(m.username), m.discord_id`, guildID)
+		WHERE g.discord_id = $1 ORDER BY lower(`+displayName("m")+`), m.discord_id`, guildID)
 	if d.Members, err = collect(rows, qerr, scanMember); err != nil {
 		return d, err
 	}
@@ -231,7 +231,7 @@ func (r *PrivacyRepo) GuildData(ctx context.Context, guildID string) (domain.Gui
 		return d, err
 	}
 	rows, qerr = r.db.Query(ctx, `
-		SELECT rd.week, rd.question, a.answer, m.discord_id, m.username
+		SELECT rd.week, rd.question, a.answer, m.discord_id, m.username, `+displayName("m")+`
 		FROM game_answers a
 		JOIN game_rounds rd ON rd.id = a.round_id
 		JOIN guilds g ON g.id = rd.guild_id

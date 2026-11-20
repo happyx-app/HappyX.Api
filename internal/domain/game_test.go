@@ -30,8 +30,14 @@ func TestRanking(t *testing.T) {
 		{GuesserDiscordID: "3", AnswerID: "a", GuessedDiscordID: "1"},
 		{GuesserDiscordID: "3", AnswerID: "gone", GuessedDiscordID: "4"}, // answer no longer in the round
 	}
-	got := Ranking(answers, guesses, map[string]string{"1": "ana", "2": "bea", "3": "carla"})
-	want := []GameScore{{"2", "bea", 1, 1}, {"3", "carla", 1, 1}, {"1", "ana", 1, 2}}
+	// Ties go by the name the server shows, not by username.
+	members := map[string]Member{
+		"1": {Username: "ana", DisplayName: "Ana"},
+		"2": {Username: "bea", DisplayName: "Zoe"},
+		"3": {Username: "carla", DisplayName: "Carla"},
+	}
+	got := Ranking(answers, guesses, members)
+	want := []GameScore{{"3", "carla", "Carla", 1, 1}, {"2", "bea", "Zoe", 1, 1}, {"1", "ana", "Ana", 1, 2}}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)
 	}

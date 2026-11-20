@@ -126,8 +126,9 @@ func (s *Server) proposeQuestion(w http.ResponseWriter, r *http.Request) {
 // --- «Who's who?» game, on the dashboard ---
 
 type gamePlayerDTO struct {
-	DiscordID string `json:"discord_user_id"`
-	Username  string `json:"username"`
+	DiscordID   string `json:"discord_user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
 }
 
 type gameAnswerDTO struct {
@@ -135,17 +136,19 @@ type gameAnswerDTO struct {
 	Answer string `json:"answer"`
 	Mine   bool   `json:"mine"`
 	// Author is only set once the round is finished, and on the viewer's own answer.
-	DiscordID string `json:"discord_user_id,omitempty"`
-	Username  string `json:"username,omitempty"`
+	DiscordID   string `json:"discord_user_id,omitempty"`
+	Username    string `json:"username,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 	// Right is how many guessed it, in finished rounds.
 	Right *int `json:"right,omitempty"`
 }
 
 type gameScoreDTO struct {
-	DiscordID string `json:"discord_user_id"`
-	Username  string `json:"username"`
-	Correct   int    `json:"correct"`
-	Guesses   int    `json:"guesses"`
+	DiscordID   string `json:"discord_user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	Correct     int    `json:"correct"`
+	Guesses     int    `json:"guesses"`
 }
 
 type gameRoundViewDTO struct {
@@ -181,10 +184,10 @@ func toGameRoundViewDTO(rv *usecase.GameRoundView) *gameRoundViewDTO {
 		Proposed: r.Proposed, MyQuestion: rv.MyQuestion,
 	}
 	if r.ProposerDiscordID != "" {
-		out.ProposedBy = &gamePlayerDTO{r.ProposerDiscordID, r.ProposerUsername}
+		out.ProposedBy = &gamePlayerDTO{r.ProposerDiscordID, r.ProposerUsername, r.ProposerDisplayName}
 	}
 	for _, a := range rv.Answers {
-		d := gameAnswerDTO{ID: a.ID, Answer: a.Text, Mine: a.ID == rv.MyAnswer.ID, DiscordID: a.MemberDiscordID, Username: a.Username}
+		d := gameAnswerDTO{ID: a.ID, Answer: a.Text, Mine: a.ID == rv.MyAnswer.ID, DiscordID: a.MemberDiscordID, Username: a.Username, DisplayName: a.DisplayName}
 		if rv.Right != nil {
 			n := rv.Right[a.ID]
 			d.Right = &n
@@ -192,10 +195,10 @@ func toGameRoundViewDTO(rv *usecase.GameRoundView) *gameRoundViewDTO {
 		out.Answers = append(out.Answers, d)
 	}
 	for _, p := range rv.Players {
-		out.Players = append(out.Players, gamePlayerDTO{p.DiscordID, p.Username})
+		out.Players = append(out.Players, gamePlayerDTO{p.DiscordID, p.Username, p.DisplayName})
 	}
 	for _, sc := range rv.Ranking {
-		out.Ranking = append(out.Ranking, gameScoreDTO{sc.DiscordID, sc.Username, sc.Correct, sc.Guesses})
+		out.Ranking = append(out.Ranking, gameScoreDTO{sc.DiscordID, sc.Username, sc.DisplayName, sc.Correct, sc.Guesses})
 	}
 	return out
 }
@@ -258,14 +261,14 @@ func toGameHistoryDTOs(hs []usecase.GameHistoryRound) []gameHistoryDTO {
 			Guesses: h.Guesses, Correct: h.Correct, MyGuesses: h.MyGuessed, Answers: []gameAnswerDTO{},
 		}
 		if r.ProposerDiscordID != "" {
-			d.ProposedBy = &gamePlayerDTO{r.ProposerDiscordID, r.ProposerUsername}
+			d.ProposedBy = &gamePlayerDTO{r.ProposerDiscordID, r.ProposerUsername, r.ProposerDisplayName}
 		}
 		if h.MyGuesses > 0 {
 			d.Mine = &gameMineDTO{h.MyCorrect, h.MyGuesses}
 		}
 		for _, a := range h.Answers {
 			n := h.Right[a.ID]
-			d.Answers = append(d.Answers, gameAnswerDTO{ID: a.ID, Answer: a.Text, Mine: a.ID == h.MyAnswerID, DiscordID: a.MemberDiscordID, Username: a.Username, Right: &n})
+			d.Answers = append(d.Answers, gameAnswerDTO{ID: a.ID, Answer: a.Text, Mine: a.ID == h.MyAnswerID, DiscordID: a.MemberDiscordID, Username: a.Username, DisplayName: a.DisplayName, Right: &n})
 		}
 		out = append(out, d)
 	}

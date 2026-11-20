@@ -110,11 +110,14 @@ type channelDTO struct {
 }
 
 type memberDTO struct {
-	DiscordID string    `json:"discord_user_id"`
-	Username  string    `json:"username"`
-	Active    bool      `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
-	Streak    int       `json:"streak,omitempty"` // only with ?with=streak
+	DiscordID string `json:"discord_user_id"`
+	Username  string `json:"username"`
+	// DisplayName is the name the Discord server shows for them; their username until the bot
+	// reports it.
+	DisplayName string    `json:"display_name"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"created_at"`
+	Streak      int       `json:"streak,omitempty"` // only with ?with=streak
 	// PolicyPending (only with ?for=survey) is true while the member hasn't answered since the
 	// privacy policy's date: their survey links the policy.
 	PolicyPending bool `json:"policy_pending,omitempty"`
@@ -164,25 +167,29 @@ type kudosSummaryDTO struct {
 }
 
 type kudosCountDTO struct {
-	DiscordID string `json:"discord_user_id"`
-	Username  string `json:"username"`
-	Count     int    `json:"count"`
+	DiscordID   string `json:"discord_user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	Count       int    `json:"count"`
 }
 
 type kudosDTO struct {
-	Day          string    `json:"day"`
-	FromID       string    `json:"from_discord_user_id"`
-	FromUsername string    `json:"from_username"`
-	ToID         string    `json:"to_discord_user_id"`
-	ToUsername   string    `json:"to_username"`
-	Message      string    `json:"message"`
-	CreatedAt    time.Time `json:"created_at"`
+	Day          string `json:"day"`
+	FromID       string `json:"from_discord_user_id"`
+	FromUsername string `json:"from_username"`
+	// FromDisplayName and ToDisplayName are the names the server shows for them.
+	FromDisplayName string    `json:"from_display_name"`
+	ToID            string    `json:"to_discord_user_id"`
+	ToUsername      string    `json:"to_username"`
+	ToDisplayName   string    `json:"to_display_name"`
+	Message         string    `json:"message"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func toKudosDTO(k domain.Kudos) kudosDTO {
 	return kudosDTO{
-		Day: k.Day.Format(dateLayout), FromID: k.GiverDiscordID, FromUsername: k.GiverUsername,
-		ToID: k.ReceiverDiscordID, ToUsername: k.ReceiverUsername, Message: k.Message, CreatedAt: k.CreatedAt,
+		Day: k.Day.Format(dateLayout), FromID: k.GiverDiscordID, FromUsername: k.GiverUsername, FromDisplayName: k.GiverDisplayName,
+		ToID: k.ReceiverDiscordID, ToUsername: k.ReceiverUsername, ToDisplayName: k.ReceiverDisplayName, Message: k.Message, CreatedAt: k.CreatedAt,
 	}
 }
 
@@ -200,11 +207,12 @@ type dayDTO struct {
 
 // reportMsgDTO is a comment. An anonymous one has only its text: day and mood are left out.
 type reportMsgDTO struct {
-	Day       string `json:"day,omitempty"`
-	Mood      int    `json:"mood,omitempty"`
-	Message   string `json:"message"`
-	DiscordID string `json:"discord_user_id,omitempty"`
-	Username  string `json:"username,omitempty"`
+	Day         string `json:"day,omitempty"`
+	Mood        int    `json:"mood,omitempty"`
+	Message     string `json:"message"`
+	DiscordID   string `json:"discord_user_id,omitempty"`
+	Username    string `json:"username,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 // --- Guilds ---
@@ -364,7 +372,7 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 	out := make([]memberDTO, 0, len(ms))
 	for _, m := range ms {
 		out = append(out, memberDTO{
-			DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt,
+			DiscordID: m.DiscordID, Username: m.Username, DisplayName: m.DisplayName, Active: m.Active, CreatedAt: m.CreatedAt,
 			Streak: streaks[m.DiscordID], PolicyPending: pending[m.DiscordID],
 		})
 	}
@@ -374,6 +382,8 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) joinMember(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Username string `json:"username"`
+		// DisplayName is optional: omitted or empty keeps the stored one.
+		DisplayName string `json:"display_name"`
 		// Active is optional: omitted keeps an existing member's opt-in state.
 		Active *bool `json:"active"`
 		// RoleIDs is optional: omitted keeps the member's stored Discord roles.
@@ -386,25 +396,26 @@ func (s *Server) joinMember(w http.ResponseWriter, r *http.Request) {
 	if in.RoleIDs != nil {
 		roles = append([]string{}, *in.RoleIDs...)
 	}
-	m, err := s.svc.UpsertMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID"), in.Username, in.Active, roles)
+	m, err := s.svc.UpsertMember(r.Context(), r.PathValue("guildID"), r.PathValue("userID"), in.Username, in.DisplayName, in.Active, roles)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt})
+	writeJSON(w, http.StatusOK, memberDTO{DiscordID: m.DiscordID, Username: m.Username, DisplayName: m.DisplayName, Active: m.Active, CreatedAt: m.CreatedAt})
 }
 
 // syncMembersMaxBytes fits a full page of members with many roles each.
 const syncMembersMaxBytes = 8 << 20
 
-// syncMembers registers up to 1000 members or refreshes their usernames and roles, keeping
+// syncMembers registers up to 1000 members or refreshes their names and roles, keeping
 // everyone's opt-in state. The bot sends its member list this way when it connects.
 func (s *Server) syncMembers(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Members []struct {
-			DiscordID string   `json:"discord_user_id"`
-			Username  string   `json:"username"`
-			RoleIDs   []string `json:"role_ids"`
+			DiscordID   string   `json:"discord_user_id"`
+			Username    string   `json:"username"`
+			DisplayName string   `json:"display_name"`
+			RoleIDs     []string `json:"role_ids"`
 		} `json:"members"`
 	}
 	if !decodeLimit(w, r, &in, syncMembersMaxBytes) {
@@ -412,7 +423,7 @@ func (s *Server) syncMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	ms := make([]domain.Member, 0, len(in.Members))
 	for _, m := range in.Members {
-		ms = append(ms, domain.Member{DiscordID: m.DiscordID, Username: m.Username, RoleIDs: m.RoleIDs})
+		ms = append(ms, domain.Member{DiscordID: m.DiscordID, Username: m.Username, DisplayName: m.DisplayName, RoleIDs: m.RoleIDs})
 	}
 	if err := s.svc.SyncMembers(r.Context(), r.PathValue("guildID"), ms); err != nil {
 		s.fail(w, r, err)
@@ -564,7 +575,7 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		out.Participation = &participationDTO{Recipients: p.Recipients, Answered: p.Answered}
 	}
 	for _, c := range rep.Kudos.TopReceivers {
-		out.Kudos.TopReceivers = append(out.Kudos.TopReceivers, kudosCountDTO{DiscordID: c.DiscordID, Username: c.Username, Count: c.Count})
+		out.Kudos.TopReceivers = append(out.Kudos.TopReceivers, kudosCountDTO{DiscordID: c.DiscordID, Username: c.Username, DisplayName: c.DisplayName, Count: c.Count})
 	}
 	for _, k := range rep.Kudos.Highlights {
 		out.Kudos.Highlights = append(out.Kudos.Highlights, toKudosDTO(k))
@@ -576,7 +587,7 @@ func (s *Server) writeReport(w http.ResponseWriter, r *http.Request, g domain.Gu
 		out.Days = append(out.Days, dayDTO{Day: d.Day.Format(dateLayout), Responses: d.Responses, Average: d.Average, Withheld: d.Withheld, AnonymityThreshold: d.AnonymityThreshold, Recipients: d.Recipients})
 	}
 	for _, m := range rep.Messages {
-		out.Messages = append(out.Messages, reportMsgDTO{Message: m.Message, Day: m.Day.Format(dateLayout), Mood: int(m.Mood), DiscordID: m.MemberDiscordID, Username: m.Username})
+		out.Messages = append(out.Messages, reportMsgDTO{Message: m.Message, Day: m.Day.Format(dateLayout), Mood: int(m.Mood), DiscordID: m.MemberDiscordID, Username: m.Username, DisplayName: m.DisplayName})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

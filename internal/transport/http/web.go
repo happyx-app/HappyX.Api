@@ -251,8 +251,10 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 	type myGuildDTO struct {
 		guildDTO
 		Access string `json:"access"`
-		// The main admin's username, for viewers who aren't owners: whom to ask for permission.
-		AdminUsername string `json:"admin_username,omitempty"`
+		// The main admin's names, for viewers who aren't owners: whom to ask for permission.
+		// admin_display_name is the one the server shows.
+		AdminUsername    string `json:"admin_username,omitempty"`
+		AdminDisplayName string `json:"admin_display_name,omitempty"`
 	}
 	out := struct {
 		User   viewerDTO      `json:"user"`
@@ -264,7 +266,7 @@ func (s *Server) webMe(w http.ResponseWriter, r *http.Request, v domain.Viewer) 
 		PausedGuilds []gameGuildDTO `json:"paused_guilds"`
 	}{viewerDTO{v.DiscordID, v.Username, v.Avatar}, []myGuildDTO{}, []gameGuildDTO{}, []gameGuildDTO{}, []gameGuildDTO{}}
 	for _, g := range gs {
-		out.Guilds = append(out.Guilds, myGuildDTO{toGuildDTO(g.Guild), g.Level.String(), g.AdminUsername})
+		out.Guilds = append(out.Guilds, myGuildDTO{toGuildDTO(g.Guild), g.Level.String(), g.AdminUsername, g.AdminDisplayName})
 	}
 	for _, g := range games {
 		out.Games = append(out.Games, gameGuildDTO{g.DiscordID, g.Name})
@@ -488,7 +490,7 @@ func toAccessDTO(a usecase.AccessSettings) accessDTO {
 		out.Roles = append(out.Roles, roleDTO{DiscordID: ro.DiscordID, Name: ro.Name, Color: ro.Color, Position: ro.Position})
 	}
 	for _, m := range a.Members {
-		out.Members = append(out.Members, memberDTO{DiscordID: m.DiscordID, Username: m.Username, Active: m.Active, CreatedAt: m.CreatedAt})
+		out.Members = append(out.Members, memberDTO{DiscordID: m.DiscordID, Username: m.Username, DisplayName: m.DisplayName, Active: m.Active, CreatedAt: m.CreatedAt})
 	}
 	return out
 }

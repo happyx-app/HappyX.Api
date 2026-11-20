@@ -27,10 +27,11 @@ const HistoryDays = 183
 const timezone = "Europe/Madrid"
 
 type person struct {
-	id, name string
-	base     float64 // their usual mood
-	roles    []string
-	optedOut bool
+	// name is their Discord username; display the name the server shows for them.
+	id, name, display string
+	base              float64 // their usual mood
+	roles             []string
+	optedOut          bool
 }
 
 func userID(n int) string { return fmt.Sprintf("1000000000000001%02d", n) }
@@ -46,23 +47,24 @@ var (
 
 // The demo is seen as Laura, the server's main admin.
 var people = []person{
-	{userID(1), "laura", 4.0, []string{roleProduct}, false},
-	{userID(2), "marc", 3.8, []string{roleDev}, false},
-	{userID(3), "nuria", 4.2, []string{roleDesign}, false},
-	{userID(4), "javi", 3.5, []string{roleDev}, false},
-	{userID(5), "sofia", 4.1, []string{roleProduct}, false},
-	{userID(6), "pau", 3.6, []string{roleDev}, false},
-	{userID(7), "elena", 4.3, []string{roleDesign}, false},
-	{userID(8), "dani", 3.4, []string{roleDev}, false},
-	{userID(9), "irene", 3.9, []string{roleProduct}, false},
-	{userID(10), "carlos", 3.7, []string{roleDev}, false},
-	{userID(11), "marta", 4.0, []string{roleExt}, false},
-	{userID(12), "alex", 3.6, []string{roleDev}, true},
+	{userID(1), "laura", "Laura", 4.0, []string{roleProduct}, false},
+	{userID(2), "marc", "Marc", 3.8, []string{roleDev}, false},
+	{userID(3), "nuria", "Núria", 4.2, []string{roleDesign}, false},
+	{userID(4), "javi", "Javi", 3.5, []string{roleDev}, false},
+	{userID(5), "sofia", "Sofía", 4.1, []string{roleProduct}, false},
+	{userID(6), "pau", "Pau", 3.6, []string{roleDev}, false},
+	{userID(7), "elena", "Elena", 4.3, []string{roleDesign}, false},
+	{userID(8), "dani", "Dani", 3.4, []string{roleDev}, false},
+	{userID(9), "irene", "Irene", 3.9, []string{roleProduct}, false},
+	{userID(10), "carlos", "Carlos", 3.7, []string{roleDev}, false},
+	{userID(11), "marta", "Marta", 4.0, []string{roleExt}, false},
+	{userID(12), "alex", "Àlex", 3.6, []string{roleDev}, true},
 }
 
-// Viewer is who the demo is seen as: Laura, the main admin.
+// Viewer is who the demo is seen as: Laura, the main admin, named as Discord shows them (the
+// web gets the Discord display name of whoever logs in).
 func Viewer() domain.Viewer {
-	return domain.Viewer{DiscordID: people[0].id, Username: "laura", ManagedGuilds: []string{GuildID}}
+	return domain.Viewer{DiscordID: people[0].id, Username: people[0].display, ManagedGuilds: []string{GuildID}}
 }
 
 var roles = []domain.Role{
@@ -190,7 +192,7 @@ func generate(lang string, today time.Time, surveyedToday bool) *data {
 	}
 	for _, p := range people {
 		d.members = append(d.members, domain.Member{
-			GuildDiscordID: GuildID, DiscordID: p.id, Username: p.name, Active: !p.optedOut,
+			GuildDiscordID: GuildID, DiscordID: p.id, Username: p.name, DisplayName: p.display, Active: !p.optedOut,
 			RoleIDs: p.roles, InServer: true, CreatedAt: d.guild.CreatedAt,
 		})
 	}
@@ -285,8 +287,8 @@ func (d *data) addDay(day time.Time) {
 			continue
 		}
 		d.kudos = append(d.kudos, domain.Kudos{
-			GuildDiscordID: GuildID, GiverDiscordID: from.id, GiverUsername: from.name,
-			ReceiverDiscordID: to.id, ReceiverUsername: to.name, Day: day,
+			GuildDiscordID: GuildID, GiverDiscordID: from.id, GiverUsername: from.name, GiverDisplayName: from.display,
+			ReceiverDiscordID: to.id, ReceiverUsername: to.name, ReceiverDisplayName: to.display, Day: day,
 			Message:   pick(d.text.kudos, "kudos-text", key, i),
 			CreatedAt: day.Add(time.Duration(10*60+int(rnd("kudos-at", key, i)*420)) * time.Minute),
 		})
@@ -304,7 +306,7 @@ func (d *data) addGame() {
 		q := int(w.Unix()/86400/7) % len(d.text.questions)
 		r := domain.GameRound{GuildDiscordID: GuildID, Week: w, Question: d.text.questions[q], CreatedAt: w.Add(9 * time.Hour)}
 		if n == 1 {
-			r.Proposed, r.ProposerDiscordID, r.ProposerUsername = true, people[6].id, people[6].name
+			r.Proposed, r.ProposerDiscordID, r.ProposerUsername, r.ProposerDisplayName = true, people[6].id, people[6].name, people[6].display
 		}
 		d.rounds[w] = r
 		answeringOver := n > 0 || r.Phase(today) != domain.GameAnswering
@@ -326,7 +328,7 @@ func (d *data) addGame() {
 			texts := d.text.answers[q]
 			d.answers[w] = append(d.answers[w], domain.GameAnswer{
 				ID: fmt.Sprintf("%016x", uint64(rnd("answer-id", key, p.id)*(1<<53))), GuildDiscordID: GuildID, Week: w,
-				MemberDiscordID: p.id, Username: p.name, Text: texts[(personIndex(p.id)+n)%len(texts)],
+				MemberDiscordID: p.id, Username: p.name, DisplayName: p.display, Text: texts[(personIndex(p.id)+n)%len(texts)],
 				CreatedAt: w.Add(time.Duration(10+personIndex(p.id)) * time.Hour),
 			})
 		}
@@ -358,7 +360,7 @@ func (d *data) addGame() {
 		next := week.AddDate(0, 0, 7)
 		for i, p := range []person{people[3], people[8], people[4]} {
 			d.proposals[next] = append(d.proposals[next], domain.GameProposal{
-				GuildDiscordID: GuildID, Week: next, MemberDiscordID: p.id, Username: p.name, Text: d.text.proposals[i],
+				GuildDiscordID: GuildID, Week: next, MemberDiscordID: p.id, Username: p.name, DisplayName: p.display, Text: d.text.proposals[i],
 			})
 		}
 	}

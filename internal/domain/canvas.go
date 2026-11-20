@@ -38,8 +38,10 @@ type CanvasStroke struct {
 	GuildDiscordID  string
 	AuthorDiscordID string
 	AuthorUsername  string
-	DrawingID       string
-	Color           int
+	// AuthorDisplayName is the name their server shows for them.
+	AuthorDisplayName string
+	DrawingID         string
+	Color             int
 	// AnchorX and AnchorY place the drawing on the screen, as a fraction of its width and
 	// height, so a drawing in the margin stays in the margin on any screen.
 	AnchorX, AnchorY float64

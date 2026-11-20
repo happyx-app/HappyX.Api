@@ -173,8 +173,9 @@ func (s *Service) GameGuilds(ctx context.Context, v domain.Viewer) ([]domain.Gui
 
 // GamePlayer is someone who answered a round, as offered to guessers.
 type GamePlayer struct {
-	DiscordID string
-	Username  string
+	DiscordID   string
+	Username    string
+	DisplayName string
 }
 
 // GameRoundView is a round as one player sees it. Who wrote what stays hidden until the round
@@ -398,7 +399,7 @@ func (s *Service) roundView(ctx context.Context, v domain.Viewer, g domain.Guild
 		MyQuestion: r.ProposerDiscordID != "" && r.ProposerDiscordID == v.DiscordID,
 	}
 	if rv.Phase != domain.GameFinished {
-		rv.Round.ProposerDiscordID, rv.Round.ProposerUsername = "", ""
+		rv.Round.ProposerDiscordID, rv.Round.ProposerUsername, rv.Round.ProposerDisplayName = "", "", ""
 	}
 	for _, a := range answers {
 		if a.MemberDiscordID == v.DiscordID {
@@ -419,14 +420,14 @@ func (s *Service) roundView(ctx context.Context, v domain.Viewer, g domain.Guild
 	}
 	if rv.Phase == domain.GameGuessing {
 		for _, a := range answers {
-			rv.Players = append(rv.Players, GamePlayer{DiscordID: a.MemberDiscordID, Username: a.Username})
+			rv.Players = append(rv.Players, GamePlayer{DiscordID: a.MemberDiscordID, Username: a.Username, DisplayName: a.DisplayName})
 			if a.MemberDiscordID != v.DiscordID {
-				a.MemberDiscordID, a.Username = "", ""
+				a.MemberDiscordID, a.Username, a.DisplayName = "", "", ""
 			}
 			rv.Answers = append(rv.Answers, a)
 		}
 		sort.Slice(rv.Players, func(i, j int) bool {
-			if a, b := strings.ToLower(rv.Players[i].Username), strings.ToLower(rv.Players[j].Username); a != b {
+			if a, b := strings.ToLower(rv.Players[i].DisplayName), strings.ToLower(rv.Players[j].DisplayName); a != b {
 				return a < b
 			}
 			return rv.Players[i].DiscordID < rv.Players[j].DiscordID
@@ -434,13 +435,13 @@ func (s *Service) roundView(ctx context.Context, v domain.Viewer, g domain.Guild
 		return rv, nil
 	}
 	rv.Answers = answers
-	usernames := map[string]string{}
+	members := map[string]domain.Member{}
 	ms, err := s.members.ListActive(ctx, g.DiscordID)
 	if err != nil {
 		return nil, err
 	}
 	for _, m := range ms {
-		usernames[m.DiscordID] = m.Username
+		members[m.DiscordID] = m
 	}
 	author := map[string]string{}
 	for _, a := range answers {
@@ -452,7 +453,7 @@ func (s *Service) roundView(ctx context.Context, v domain.Viewer, g domain.Guild
 			rv.Right[gs.AnswerID]++
 		}
 	}
-	rv.Ranking = domain.Ranking(answers, guesses, usernames)
+	rv.Ranking = domain.Ranking(answers, guesses, members)
 	return rv, nil
 }
 

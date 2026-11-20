@@ -260,15 +260,15 @@ func (s *Service) GuildRemoved(ctx context.Context, guildID string) error {
 
 // --- Members ---
 
-// UpsertMember registers a guild member or refreshes their username and roles. With active nil
+// UpsertMember registers a guild member or refreshes their names and roles. With active nil
 // an existing member keeps their opt-in state (used when syncing the member list); true opts
 // them in (they joined the server or asked to receive the survey again). With roleIDs nil
-// their stored roles are kept.
-func (s *Service) UpsertMember(ctx context.Context, guildID, userID, username string, active *bool, roleIDs []string) (domain.Member, error) {
+// their stored roles are kept, and with an empty displayName their stored display name.
+func (s *Service) UpsertMember(ctx context.Context, guildID, userID, username, displayName string, active *bool, roleIDs []string) (domain.Member, error) {
 	if _, err := s.activeGuild(ctx, guildID); err != nil {
 		return domain.Member{}, err
 	}
-	m := domain.Member{GuildDiscordID: guildID, DiscordID: userID, Username: username, RoleIDs: roleIDs}
+	m := domain.Member{GuildDiscordID: guildID, DiscordID: userID, Username: username, DisplayName: displayName, RoleIDs: roleIDs}
 	if err := m.Validate(); err != nil {
 		return domain.Member{}, err
 	}
@@ -278,7 +278,7 @@ func (s *Service) UpsertMember(ctx context.Context, guildID, userID, username st
 // MaxSyncMembers is how many members one SyncMembers call takes: a page of Discord's member list.
 const MaxSyncMembers = 1000
 
-// SyncMembers registers members or refreshes their usernames and roles in one write, keeping
+// SyncMembers registers members or refreshes their names and roles in one write, keeping
 // everyone's opt-in state. The bot sends its member list this way when it connects, a page at a
 // time, instead of one request and one commit per member.
 func (s *Service) SyncMembers(ctx context.Context, guildID string, ms []domain.Member) error {
@@ -581,14 +581,14 @@ func (s *Service) Report(ctx context.Context, guildID string, from, to time.Time
 	if err != nil {
 		return domain.Report{}, err
 	}
-	usernames := map[string]string{}
+	members := map[string]domain.Member{}
 	if !g.Settings.Anonymous {
 		ms, err := s.members.ListActive(ctx, guildID)
 		if err != nil {
 			return domain.Report{}, err
 		}
 		for _, m := range ms {
-			usernames[m.DiscordID] = m.Username
+			members[m.DiscordID] = m
 		}
 	}
 	kudos, err := s.kudos.ListBetween(ctx, guildID, from, to)
@@ -599,7 +599,7 @@ func (s *Service) Report(ctx context.Context, guildID string, from, to time.Time
 	if err != nil {
 		return domain.Report{}, err
 	}
-	r := domain.BuildReport(g, from, to, entries, usernames)
+	r := domain.BuildReport(g, from, to, entries, members)
 	r.Kudos = domain.SummarizeKudos(kudos)
 	r.AddParticipation(sent)
 	h, err := s.reach(ctx, g)
@@ -678,9 +678,11 @@ func (s *Service) reach(ctx context.Context, g domain.Guild) (domain.GuildHealth
 type GuildAccess struct {
 	Guild domain.Guild
 	Level domain.AccessLevel
-	// AdminUsername names the main admin for viewers who aren't owners, so the web can say whom
-	// to ask for permission. Empty for owners, or when the admin isn't a known member.
-	AdminUsername string
+	// AdminUsername and AdminDisplayName name the main admin for viewers who aren't owners, so
+	// the web can say whom to ask for permission. Empty for owners, or when the admin isn't a
+	// known member.
+	AdminUsername    string
+	AdminDisplayName string
 }
 
 // VisibleGuilds lists the guilds the viewer may see on the dashboard, with their access level.
@@ -707,7 +709,7 @@ func (s *Service) VisibleGuilds(ctx context.Context, v domain.Viewer) ([]GuildAc
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, err
 			}
-			ga.AdminUsername = m.Username
+			ga.AdminUsername, ga.AdminDisplayName = m.Username, m.DisplayName
 		}
 		out = append(out, ga)
 	}

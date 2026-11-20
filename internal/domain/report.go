@@ -76,9 +76,10 @@ type KudosSummary struct {
 
 // KudosCount is how many kudos one member received.
 type KudosCount struct {
-	DiscordID string
-	Username  string
-	Count     int
+	DiscordID   string
+	Username    string
+	DisplayName string
+	Count       int
 }
 
 const (
@@ -99,7 +100,7 @@ func SummarizeKudos(kudos []Kudos) KudosSummary {
 			received[k.ReceiverDiscordID] = c
 		}
 		c.Count++
-		c.Username = k.ReceiverUsername // the latest name wins
+		c.Username, c.DisplayName = k.ReceiverUsername, k.ReceiverDisplayName // the latest name wins
 	}
 	s.Givers, s.Receivers = len(givers), len(received)
 	for _, c := range received {
@@ -109,7 +110,7 @@ func SummarizeKudos(kudos []Kudos) KudosSummary {
 		if a.Count != b.Count {
 			return b.Count - a.Count
 		}
-		return strings.Compare(strings.ToLower(a.Username), strings.ToLower(b.Username))
+		return strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName))
 	})
 	s.TopReceivers = s.TopReceivers[:min(len(s.TopReceivers), MaxKudosTopReceivers)]
 	for i := len(kudos) - 1; i >= 0 && len(s.Highlights) < MaxKudosHighlights; i-- {
@@ -132,8 +133,8 @@ type DayStat struct {
 	Recipients *int
 }
 
-// ReportMessage is an optional comment left with a mood, with its day. MemberDiscordID and
-// Username are set only for a comment whose author is shown: the guild is not anonymous now
+// ReportMessage is an optional comment left with a mood, with its day. MemberDiscordID,
+// Username and DisplayName are set only for a comment whose author is shown: the guild is not anonymous now
 // and was not when it was written.
 type ReportMessage struct {
 	Day             time.Time
@@ -141,6 +142,7 @@ type ReportMessage struct {
 	Message         string
 	MemberDiscordID string
 	Username        string
+	DisplayName     string
 }
 
 // Anonymous reports whether the comment hides its author.
@@ -161,8 +163,9 @@ func WithheldDay(anonymousPeople, k int) bool {
 // average, distribution or comments. Leaving it out only of its own row would not be enough:
 // the period's figures minus the other days' would give it back, and so would two reports
 // whose periods differ by that day. When every answer falls on withheld days, the report is
-// withheld too and keeps only the counts. usernames maps member Discord IDs to display names.
-func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames map[string]string) Report {
+// withheld too and keeps only the counts. members maps Discord IDs to the members, for the names
+// of the comments' authors.
+func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, members map[string]Member) Report {
 	k := max(guild.Settings.AnonymityThreshold, MinAnonymityThreshold)
 	r := Report{
 		GuildDiscordID:     guild.DiscordID,
@@ -207,7 +210,8 @@ func BuildReport(guild Guild, from, to time.Time, entries []MoodEntry, usernames
 		if e.Message != "" {
 			m := ReportMessage{Day: d, Mood: e.Mood, Message: e.Message}
 			if shown {
-				m.MemberDiscordID, m.Username = e.MemberDiscordID, usernames[e.MemberDiscordID]
+				who := members[e.MemberDiscordID]
+				m.MemberDiscordID, m.Username, m.DisplayName = e.MemberDiscordID, who.Username, who.DisplayName
 			}
 			a.messages = append(a.messages, m)
 		}

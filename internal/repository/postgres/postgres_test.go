@@ -103,7 +103,7 @@ func TestGuildLifecycle(t *testing.T) {
 	if err != nil || len(active) != 0 {
 		t.Fatalf("removed guild still active: %v %v", active, err)
 	}
-	if _, err := svc.UpsertMember(ctx, guildA, user1, "u1", nil, nil); !errors.Is(err, domain.ErrInactive) {
+	if _, err := svc.UpsertMember(ctx, guildA, user1, "u1", "", nil, nil); !errors.Is(err, domain.ErrInactive) {
 		t.Fatalf("join on inactive guild: want ErrInactive, got %v", err)
 	}
 }
@@ -450,7 +450,7 @@ func mustStartSurvey(t *testing.T, svc *usecase.Service, guild string) {
 
 func mustJoin(t *testing.T, svc *usecase.Service, guild, user string) {
 	t.Helper()
-	if _, err := svc.UpsertMember(context.Background(), guild, user, "user"+user[len(user)-1:], nil, nil); err != nil {
+	if _, err := svc.UpsertMember(context.Background(), guild, user, "user"+user[len(user)-1:], "", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -473,7 +473,7 @@ func TestSyncMembers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := svc.UpsertMember(ctx, guildA, user1, "renamed", nil, nil)
+	m, err := svc.UpsertMember(ctx, guildA, user1, "renamed", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +582,7 @@ func TestSyncKeepsOptOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A member list sync (active nil) must not re-subscribe them.
-	m, err := svc.UpsertMember(ctx, guildA, user1, "renamed", nil, nil)
+	m, err := svc.UpsertMember(ctx, guildA, user1, "renamed", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,7 +590,7 @@ func TestSyncKeepsOptOut(t *testing.T) {
 		t.Fatalf("sync should update the name but keep the opt-out: %+v", m)
 	}
 	yes := true
-	if m, err = svc.UpsertMember(ctx, guildA, user1, "renamed", &yes, nil); err != nil || !m.Active {
+	if m, err = svc.UpsertMember(ctx, guildA, user1, "renamed", "", &yes, nil); err != nil || !m.Active {
 		t.Fatalf("explicit opt-in should reactivate: %+v %v", m, err)
 	}
 }
