@@ -11,6 +11,8 @@ type textSet struct {
 	questions []string
 	answers   [][]string
 	proposals []string
+	// events: the hard stretch and the good day marked on the chart (title, description).
+	hardEvent, goodEvent [2]string
 }
 
 // Languages are the demo's languages; the first is the default.
@@ -20,6 +22,8 @@ var texts = map[string]textSet{"es": es, "en": en}
 
 var es = textSet{
 	guildName: "Equipo Demo",
+	hardEvent: [2]string{"Entrega del proyecto", "Tres días de cierre con el cliente esperando la versión final."},
+	goodEvent: [2]string{"Comida de equipo", ""},
 	comments: map[domain.Mood][]string{
 		domain.MoodAwful: {
 			"No he dormido nada y hoy no llego a todo.",
@@ -122,6 +126,8 @@ var es = textSet{
 
 var en = textSet{
 	guildName: "Demo Team",
+	hardEvent: [2]string{"Project delivery", "Three days of crunch with the client waiting for the final version."},
+	goodEvent: [2]string{"Team lunch", ""},
 	comments: map[domain.Mood][]string{
 		domain.MoodAwful: {
 			"Barely slept and can't keep up today.",

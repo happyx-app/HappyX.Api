@@ -25,6 +25,8 @@ type Evolution struct {
 	// Vacations are the person's days off that touch the period and apply in the guild: their
 	// own and the ones set there, past ones included.
 	Vacations Vacations
+	// Events are the guild's team events that touch the period, by start date.
+	Events []TeamEvent
 }
 
 // BuildEvolution summarises entries (the person's answers in g, oldest first, which may

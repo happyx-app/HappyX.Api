@@ -233,3 +233,15 @@ type ChannelPostRepository interface {
 	Put(ctx context.Context, p domain.ChannelPost) (domain.ChannelPost, error)
 	Delete(ctx context.Context, guildID, kind string) error
 }
+
+// TeamEventRepository stores the events marked on a guild's chart. Every call is scoped to the
+// guild: an id from another guild is domain.ErrNotFound.
+type TeamEventRepository interface {
+	// ForGuild returns the guild's events that touch [from, to], by start date.
+	ForGuild(ctx context.Context, guildID string, from, to time.Time) ([]domain.TeamEvent, error)
+	// Count returns how many events the guild has.
+	Count(ctx context.Context, guildID string) (int, error)
+	Create(ctx context.Context, e domain.TeamEvent) (domain.TeamEvent, error)
+	Update(ctx context.Context, e domain.TeamEvent) (domain.TeamEvent, error)
+	Delete(ctx context.Context, guildID string, id int64) error
+}

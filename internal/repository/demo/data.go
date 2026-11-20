@@ -114,6 +114,7 @@ type data struct {
 	answers    map[time.Time][]domain.GameAnswer
 	guesses    map[time.Time][]domain.GameGuess
 	proposals  map[time.Time][]domain.GameProposal
+	events     []domain.TeamEvent // by start date
 }
 
 // Store keeps the demo's data in one language, generated again when the day changes.
@@ -200,7 +201,37 @@ func generate(lang string, today time.Time, surveyedToday bool) *data {
 		d.addDay(day)
 	}
 	d.addGame()
+	d.addEvents()
 	return d
+}
+
+// addEvents marks two events in the last 90 days, where the chart shows why: a hard stretch
+// around the team's lowest working day, and a good day at its highest.
+func (d *data) addEvents() {
+	var low, high time.Time
+	for day := d.today.AddDate(0, 0, -89); day.Before(d.today); day = day.AddDate(0, 0, 1) {
+		if !d.guild.Settings.IsWorkingDay(day) {
+			continue
+		}
+		if low.IsZero() || teamMood(day) < teamMood(low) {
+			low = day
+		}
+		if high.IsZero() || teamMood(day) > teamMood(high) {
+			high = day
+		}
+	}
+	if low.IsZero() {
+		return
+	}
+	from, to := low.AddDate(0, 0, -1), low.AddDate(0, 0, 1)
+	if to.After(d.today) {
+		to = d.today
+	}
+	d.events = []domain.TeamEvent{
+		{ID: 1, GuildDiscordID: GuildID, From: from, To: to, Title: d.text.hardEvent[0], Description: d.text.hardEvent[1], Color: "red"},
+		{ID: 2, GuildDiscordID: GuildID, From: high, To: high, Title: d.text.goodEvent[0], Description: d.text.goodEvent[1], Color: "green"},
+	}
+	sort.Slice(d.events, func(i, j int) bool { return d.events[i].From.Before(d.events[j].From) })
 }
 
 func (d *data) addDay(day time.Time) {
